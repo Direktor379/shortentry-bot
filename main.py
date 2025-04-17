@@ -2,25 +2,24 @@ from fastapi import FastAPI, Request
 import requests
 import os
 from dotenv import load_dotenv
-import openai
+from openai import OpenAI
 
-# 🤖 Оновлення GPT логіки — серія перевірки для Render
-# Завантаження токенів із .env
+# 🧠 GPT + Telegram бот
 load_dotenv()
 app = FastAPI()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai.api_key = OPENAI_API_KEY
+client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Функція надсилання повідомлення в Telegram
+# Надсилання повідомлення в Telegram
 def send_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": text}
     requests.post(url, data=data)
 
-# Функція запиту до GPT
+# GPT-відповідь
 def ask_gpt(signal: str):
     prompt = f"""
     Є сигнал на SHORT. Поточний текст сигналу: "{signal}"
@@ -30,8 +29,8 @@ def ask_gpt(signal: str):
     - SKIP
     """
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
+        response = client.chat.completions.create(
+            model="gpt-4-turbo",
             messages=[
                 {"role": "system", "content": "Ти трейдинг аналітик. Відповідай лише: SHORT, BOOSTED_SHORT або SKIP."},
                 {"role": "user", "content": prompt.strip()}
@@ -41,7 +40,7 @@ def ask_gpt(signal: str):
     except Exception as e:
         return f"GPT error: {e}"
 
-# Webhook обробляє сигнал
+# Webhook для TradingView
 @app.post("/webhook")
 async def webhook(req: Request):
     try:
@@ -54,6 +53,7 @@ async def webhook(req: Request):
     except Exception as e:
         send_message(f"❌ Помилка Webhook: {e}")
         return {"error": str(e)}
+
 
 
 
