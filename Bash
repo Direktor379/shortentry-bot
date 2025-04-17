@@ -1,0 +1,6 @@
+mkdir shortentrybot
+cd shortentrybot
+python -m venv venv
+source venv/bin/activate   # або venv\Scripts\activate на Windows
+
+pip install fastapi uvicorn requests python-dotenv
