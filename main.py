@@ -4,13 +4,14 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# 🧠 GPT логіка + Telegram сигнал
 load_dotenv()
 app = FastAPI()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 def send_message(text: str):
@@ -18,14 +19,27 @@ def send_message(text: str):
     data = {"chat_id": CHAT_ID, "text": text}
     requests.post(url, data=data)
 
-def ask_gpt(signal: str):
+def get_latest_news():
+    try:
+        url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
+        response = requests.get(url)
+        news = response.json()
+        headlines = [item["title"] for item in news.get("results", [])[:3]]
+        return "\n".join(headlines)
+    except:
+        return "⚠️ Новини не вдалося завантажити."
+
+def ask_gpt(signal: str, news: str):
     prompt = f"""
-    Є сигнал на SHORT. Поточний текст сигналу: "{signal}"
-    Визнач чи варто входити в позицію. Відповідь має бути лише однією з трьох:
-    - SHORT
-    - BOOSTED_SHORT
-    - SKIP
-    """
+Останні важливі новини:
+{news}
+
+Сигнал: "{signal}"
+Визнач, чи варто входити в SHORT. Відповідай лише одним словом:
+- SHORT
+- BOOSTED_SHORT
+- SKIP
+"""
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -43,12 +57,14 @@ async def webhook(req: Request):
     try:
         body = await req.body()
         signal = body.decode("utf-8").strip()
-        gpt_response = ask_gpt(signal)
-        send_message(f"📩 GPT-відповідь на сигнал '{signal}': {gpt_response}")
+        news_context = get_latest_news()
+        gpt_response = ask_gpt(signal, news_context)
+        send_message(f"🧠 GPT-відповідь на '{signal}':\n{gpt_response}")
         return {"ok": True}
     except Exception as e:
-        send_message(f"❌ Помилка Webhook: {e}")
+        send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
+
 
 
 
