@@ -8,6 +8,7 @@ from datetime import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# 🌍 Завантажуємо змінні середовища
 load_dotenv()
 app = FastAPI()
 
@@ -37,14 +38,9 @@ def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
         gclient = gspread.authorize(creds)
 
         print("✅ Авторизація Google Sheets успішна")
-
         sh = gclient.open_by_key(GOOGLE_SHEET_ID)
         print("📄 Таблиця відкрита:", sh.title)
-
-        sheets = sh.worksheets()
-        print("📑 Листи:", [s.title for s in sheets])
-
-        sheet = sheets[0]
+        sheet = sh.worksheets()[0]
         print("➡️ Вибрано лист:", sheet.title)
 
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -180,7 +176,7 @@ def place_short(symbol, usd):
         binance_client.futures_create_order(symbol=symbol, side='BUY', type='STOP_MARKET',
             stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
 
-        send_message(f"🔴 SHORT OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+        send_message("📤 Викликаємо log_to_sheet для SHORT")  # ⬅️ обовʼязковий print
         log_to_sheet("SHORT", entry, tp, sl, qty, None, "GPT сигнал")
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
@@ -207,7 +203,7 @@ async def webhook(req: Request):
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
 
-# 🚀 Запуск сервера
+# 🚀 Запуск сервера (для локального запуску)
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 10000))
