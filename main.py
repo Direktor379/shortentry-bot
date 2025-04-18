@@ -33,6 +33,15 @@ binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
 client = OpenAI(api_key=OPENAI_API_KEY)
 last_open_interest = None
 
+# 📬 Telegram
+def send_message(text: str):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = {"chat_id": CHAT_ID, "text": text}
+    try:
+        requests.post(url, data=data)
+    except Exception as e:
+        print(f"Telegram error: {e}")
+
 # 📊 Google Sheets
 def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
     try:
@@ -47,18 +56,23 @@ def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
     except Exception as e:
         send_message(f"❌ Sheets error: {e}")
 
-# 📬 Telegram
-def send_message(text: str):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    data = {"chat_id": CHAT_ID, "text": text}
+def update_result_in_sheet(type_, result, pnl=None):
     try:
-        requests.post(url, data=data)
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
+        gclient = gspread.authorize(creds)
+        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheets()[0]
+        data = sheet.get_all_values()
+        for i in reversed(range(len(data))):
+            if data[i][1] == type_ and data[i][6] == "":
+                sheet.update_cell(i + 1, 7, result)
+                if pnl is not None:
+                    sheet.update_cell(i + 1, 8, f"{pnl} USDT")
+                break
     except Exception as e:
-        print(f"Telegram error: {e}")
+        send_message(f"❌ Update result error: {e}")
 
 # 📈 Ринок
-# ... get_latest_news, get_open_interest, get_volume, get_quantity
-
 def get_latest_news():
     try:
         url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
@@ -124,7 +138,6 @@ Open Interest: {oi:,.0f}
         return "SKIP"
 
 # 📈 Торгівля
-
 def place_long(symbol, usd):
     try:
         entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
