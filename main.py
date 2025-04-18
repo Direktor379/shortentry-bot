@@ -7,6 +7,9 @@ from binance.client import Client
 from datetime import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import asyncio
+import json
+import websockets
 
 # 🌍 Завантажуємо змінні середовища
 load_dotenv()
@@ -37,19 +40,14 @@ def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
         gclient = gspread.authorize(creds)
 
-        print("✅ Авторизація Google Sheets успішна")
         sh = gclient.open_by_key(GOOGLE_SHEET_ID)
-        print("📄 Таблиця відкрита:", sh.title)
         sheet = sh.worksheets()[0]
-        print("➡️ Вибрано лист:", sheet.title)
 
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         row = [now, type_, entry, tp, sl, qty, result or "", comment]
         sheet.append_row(row)
-        print("✅ Запис додано в Google Sheets.")
     except Exception as e:
         send_message(f"❌ Sheets error: {e}")
-        print(f"❌ Sheets error: {e}")
 
 # 📬 Telegram
 def send_message(text: str):
@@ -95,27 +93,25 @@ def get_quantity(symbol: str, usd: float):
         return None
 
 # 🤖 GPT
-def ask_gpt_long(news, oi, delta, volume):
+def ask_gpt_trade(type_, news, oi, delta, volume):
     prompt = f"""
 Останні новини:
 {news}
 
 Open Interest: {oi:,.0f}
 Зміна: {delta:.2f}%
-Обʼєм за 1хв: {volume}
+Обєм за 1хв: {volume}
 
-Чи варто відкривати LONG?
+Сигнал: {type_.upper()}
 
-Одна відповідь:
-- LONG
-- BOOSTED_LONG
-- SKIP
+Чи підтверджуєш цей сигнал?
+- LONG / BOOSTED_LONG / SHORT / BOOSTED_SHORT / SKIP
 """
     try:
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "Ти трейдинг-аналітик. Відповідай: LONG, BOOSTED_LONG або SKIP."},
+                {"role": "system", "content": "Ти трейдинг-аналітик. Відповідай лише одним зі слів: LONG, BOOSTED_LONG, SHORT, BOOSTED_SHORT, SKIP."},
                 {"role": "user", "content": prompt}
             ]
         )
@@ -123,88 +119,59 @@ Open Interest: {oi:,.0f}
     except:
         return "SKIP"
 
-# 🟢 LONG
-def place_long(symbol, usd):
-    try:
-        positions = binance_client.futures_position_information(symbol=symbol)
-        long_pos = next((p for p in positions if p["positionSide"] == "LONG"), None)
-        if long_pos and abs(float(long_pos["positionAmt"])) > 0:
-            send_message("⚠️ LONG вже відкрито")
-            return
+# 🔵 Whale Detector (AggTrades)
+agg_trades = []
 
-        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-        qty = get_quantity(symbol, usd)
-        if not qty:
-            send_message("❌ Обсяг не визначено.")
-            return
+async def monitor_agg_trades():
+    uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
+    async with websockets.connect(uri) as websocket:
+        while True:
+            try:
+                msg = json.loads(await websocket.recv())
+                price = float(msg['p'])
+                qty = float(msg['q'])
+                direction = 'sell' if msg['m'] else 'buy'
+                total = price * qty
+                ts = msg['T']
 
-        tp = round(entry * 1.015, 2)
-        sl = round(entry * 0.992, 2)
+                if total >= 100_000:
+                    agg_trades.append({"ts": ts, "value": total, "dir": direction})
+                    send_message(f"🐋 {direction.upper()} {round(total):,} USD")
 
-        binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
-            stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET',
-            stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
+                now = int(datetime.utcnow().timestamp() * 1000)
+                agg_trades[:] = [x for x in agg_trades if now - x['ts'] <= 5000]
 
-        send_message(f"🟢 LONG OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
-        log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
-    except Exception as e:
-        send_message(f"❌ Binance LONG error: {e}")
+                for side in ['buy', 'sell']:
+                    sum_side = sum(t['value'] for t in agg_trades if t['dir'] == side)
+                    if sum_side >= 1_000_000:
+                        signal = 'BOOSTED_LONG' if side == 'buy' else 'BOOSTED_SHORT'
+                        send_message(f"💥 {signal} — $1M+ агресивно за 5 секунд")
 
-# 🔴 SHORT
-def place_short(symbol, usd):
-    try:
-        positions = binance_client.futures_position_information(symbol=symbol)
-        short_pos = next((p for p in positions if p["positionSide"] == "SHORT"), None)
-        if short_pos and abs(float(short_pos["positionAmt"])) > 0:
-            send_message("⚠️ SHORT вже відкрито")
-            return
+                        news = get_latest_news()
+                        oi = get_open_interest("BTCUSDT")
+                        delta = 0
+                        volume = get_volume("BTCUSDT")
 
-        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-        qty = get_quantity(symbol, usd)
-        if not qty:
-            send_message("❌ Обсяг не визначено.")
-            return
+                        decision = ask_gpt_trade(signal, news, oi, delta, volume)
+                        send_message(f"🤖 GPT вирішив: {decision}")
 
-        tp = round(entry * 0.99, 2)
-        sl = round(entry * 1.008, 2)
+                        if decision in ["BOOSTED_LONG", "LONG"]:
+                            place_long("BTCUSDT", 1000)
+                        elif decision in ["BOOSTED_SHORT", "SHORT"]:
+                            place_short("BTCUSDT", 1000)
+            except Exception as e:
+                send_message(f"⚠️ WebSocket error: {e}")
+                await asyncio.sleep(5)
 
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
-        binance_client.futures_create_order(symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
-            stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT')
-        binance_client.futures_create_order(symbol=symbol, side='BUY', type='STOP_MARKET',
-            stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
-
-        send_message("📤 Викликаємо log_to_sheet для SHORT")  # ⬅️ обовʼязковий print
-        log_to_sheet("SHORT", entry, tp, sl, qty, None, "GPT сигнал")
-    except Exception as e:
-        send_message(f"❌ Binance SHORT error: {e}")
-
-# 📬 Webhook
-@app.post("/webhook")
-async def webhook(req: Request):
-    global last_open_interest
-    try:
-        data = await req.json()
-        signal = data.get("message", "").strip().upper()
-
-        oi = get_open_interest("BTCUSDT")
-        delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
-        last_open_interest = oi
-
-        if signal == "SHORT":
-            place_short("BTCUSDT", 1000)
-        elif signal == "LONG":
-            place_long("BTCUSDT", 1000)
-
-        return {"ok": True}
-    except Exception as e:
-        send_message(f"❌ Webhook error: {e}")
-        return {"error": str(e)}
-
-# 🚀 Запуск сервера (для локального запуску)
+# 🚀 Запуск сервера і вебсокета
 if __name__ == "__main__":
     import uvicorn
+    import threading
+
+    def start_ws():
+        asyncio.run(monitor_agg_trades())
+
+    threading.Thread(target=start_ws).start()
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
+
