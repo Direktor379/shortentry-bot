@@ -84,11 +84,28 @@ Open Interest (поточне): {oi_str}
     except Exception as e:
         return f"GPT error: {e}"
 
+def get_quantity(symbol: str, usd_amount: float):
+    try:
+        info = binance_client.futures_exchange_info()
+        for s in info["symbols"]:
+            if s["symbol"] == symbol:
+                step_size = float(next(f["stepSize"] for f in s["filters"] if f["filterType"] == "LOT_SIZE"))
+                mark_price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+                raw_qty = usd_amount / mark_price
+                qty = round(raw_qty - (raw_qty % step_size), 8)
+                return qty
+    except Exception as e:
+        send_message(f"❌ Quantity error: {e}")
+        return None
+
 def place_short(symbol: str, usd_amount: float):
     try:
-        mark_price_data = binance_client.futures_mark_price(symbol=symbol)
-        entry_price = float(mark_price_data["markPrice"])
-        quantity = round(usd_amount / entry_price, 5)
+        entry_price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        quantity = get_quantity(symbol, usd_amount)
+        if quantity is None or quantity == 0:
+            send_message("❌ Неможливо розрахувати обсяг. Угоду не відкрито.")
+            return None
+
         tp_price = round(entry_price * 0.99, 2)
         sl_price = round(entry_price * 1.008, 2)
 
@@ -154,11 +171,6 @@ async def webhook(req: Request):
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
-
-
-
-
-
 
 
 
