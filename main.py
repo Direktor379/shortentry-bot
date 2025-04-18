@@ -72,15 +72,13 @@ def update_result_in_sheet(type_, result, pnl=None):
                 break
     except Exception as e:
         send_message(f"❌ Update result error: {e}")
-
 # 📈 Ринок
 def get_latest_news():
     try:
         url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
         r = requests.get(url)
         news = r.json()
-        return "
-".join([item["title"] for item in news.get("results", [])[:3]])
+        return "\n".join([item["title"] for item in news.get("results", [])[:3]])
     except:
         return "⚠️ Новини не вдалося завантажити."
 
@@ -138,7 +136,105 @@ Open Interest: {oi:,.0f}
     except:
         return "SKIP"
 
-# 🔄 Моніторинг закриття угод
+# 📈 Торгівля
+def place_long(symbol, usd):
+    try:
+        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        qty = get_quantity(symbol, usd)
+        if not qty:
+            send_message("❌ Обсяг не визначено.")
+            return
+        tp = round(entry * 1.015, 2)
+        sl = round(entry * 0.992, 2)
+        binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
+        binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET', stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
+        binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET', stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
+        send_message(f"🟢 LONG OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+        log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
+    except Exception as e:
+        send_message(f"❌ Binance LONG error: {e}")
+
+def place_short(symbol, usd):
+    try:
+        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        qty = get_quantity(symbol, usd)
+        if not qty:
+            send_message("❌ Обсяг не визначено.")
+            return
+        tp = round(entry * 0.99, 2)
+        sl = round(entry * 1.008, 2)
+        binance_client.futures_create_order(symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
+        binance_client.futures_create_order(symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET', stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT')
+        binance_client.futures_create_order(symbol=symbol, side='BUY', type='STOP_MARKET', stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
+        send_message(f"🔴 SHORT OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+        log_to_sheet("SHORT", entry, tp, sl, qty, None, "GPT сигнал")
+    except Exception as e:
+        send_message(f"❌ Binance SHORT error: {e}")
+# 📬 Webhook
+@app.post("/webhook")
+async def webhook(req: Request):
+    global last_open_interest
+    try:
+        data = await req.json()
+        signal = data.get("message", "").strip().upper()
+        send_message(f"📩 Отримано сигнал: {signal}")
+        news = get_latest_news()
+        oi = get_open_interest("BTCUSDT")
+        delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
+        last_open_interest = oi
+        volume = get_volume("BTCUSDT")
+        decision = ask_gpt_trade(signal, news, oi, delta, volume)
+        send_message(f"🤖 GPT вирішив: {decision}")
+        log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
+        if decision in ["LONG", "BOOSTED_LONG"]:
+            place_long("BTCUSDT", 1000)
+        elif decision in ["SHORT", "BOOSTED_SHORT"]:
+            place_short("BTCUSDT", 1000)
+        return {"ok": True}
+    except Exception as e:
+        send_message(f"❌ Webhook error: {e}")
+        return {"error": str(e)}
+
+# 🐋 Whale Detector
+agg_trades = []
+
+async def monitor_agg_trades():
+    uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
+    async with websockets.connect(uri) as websocket:
+        while True:
+            try:
+                msg = json.loads(await websocket.recv())
+                price = float(msg['p'])
+                qty = float(msg['q'])
+                direction = 'sell' if msg['m'] else 'buy'
+                total = price * qty
+                ts = msg['T']
+                if total >= 100_000:
+                    agg_trades.append({"ts": ts, "value": total, "dir": direction})
+                    send_message(f"🐋 {direction.upper()} {round(total):,} USD")
+                now = int(datetime.utcnow().timestamp() * 1000)
+                agg_trades[:] = [x for x in agg_trades if now - x['ts'] <= 5000]
+                for side in ['buy', 'sell']:
+                    sum_side = sum(t['value'] for t in agg_trades if t['dir'] == side)
+                    if sum_side >= 1_000_000:
+                        signal = 'BOOSTED_LONG' if side == 'buy' else 'BOOSTED_SHORT'
+                        send_message(f"💥 {signal} — $1M+ агресивно за 5 секунд")
+                        news = get_latest_news()
+                        oi = get_open_interest("BTCUSDT")
+                        delta = 0
+                        volume = get_volume("BTCUSDT")
+                        decision = ask_gpt_trade(signal, news, oi, delta, volume)
+                        send_message(f"🤖 GPT вирішив: {decision}")
+                        log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
+                        if decision in ["BOOSTED_LONG", "LONG"]:
+                            place_long("BTCUSDT", 1000)
+                        elif decision in ["BOOSTED_SHORT", "SHORT"]:
+                            place_short("BTCUSDT", 1000)
+            except Exception as e:
+                send_message(f"⚠️ WebSocket error: {e}")
+                await asyncio.sleep(5)
+
+# 🔄 Авто-моніторинг закриття позицій
 async def monitor_closures():
     while True:
         for side in ["LONG", "SHORT"]:
@@ -156,6 +252,24 @@ async def monitor_closures():
             except Exception:
                 pass
         await asyncio.sleep(60)
+
+# 🚀 Запуск
+if __name__ == "__main__":
+    import uvicorn
+    import threading
+    def start_ws():
+        asyncio.run(monitor_agg_trades())
+
+    def start_closures():
+        asyncio.run(monitor_closures())
+
+    threading.Thread(target=start_ws).start()
+    threading.Thread(target=start_closures).start()
+
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
+
+
 
 
 
