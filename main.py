@@ -175,17 +175,38 @@ def place_short(symbol, usd):
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
 
-# (webhook і websocket вже додані раніше)
+# ✅ Webhook для отримання сигналів
+@app.post("/webhook")
+async def webhook(req: Request):
+    global last_open_interest
+    try:
+        data = await req.json()
+        signal = data.get("message", "").strip().upper()
+        send_message(f"📩 Отримано сигнал: {signal}")
 
-# 🚀 Запуск сервера і вебсокета
+        news = get_latest_news()
+        oi = get_open_interest("BTCUSDT")
+        delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
+        last_open_interest = oi
+        volume = get_volume("BTCUSDT")
+
+        decision = ask_gpt_trade(signal, news, oi, delta, volume)
+        send_message(f"🤖 GPT вирішив: {decision}")
+        log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
+
+        if decision in ["LONG", "BOOSTED_LONG"]:
+            place_long("BTCUSDT", 1000)
+        elif decision in ["SHORT", "BOOSTED_SHORT"]:
+            place_short("BTCUSDT", 1000)
+
+        return {"ok": True}
+    except Exception as e:
+        send_message(f"❌ Webhook error: {e}")
+        return {"error": str(e)}
+
+# 🚀 Запуск сервера
 if __name__ == "__main__":
     import uvicorn
-    import threading
-
-    def start_ws():
-        asyncio.run(monitor_agg_trades())
-
-    threading.Thread(target=start_ws).start()
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
 
