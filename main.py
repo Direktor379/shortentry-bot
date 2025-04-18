@@ -4,6 +4,9 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 from binance.client import Client
+from datetime import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 load_dotenv()
 app = FastAPI()
@@ -12,26 +15,40 @@ app = FastAPI()
 async def healthcheck():
     return {"status": "running"}
 
-# 🔐 API keys
+# 🔐 Ключі
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
+GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 
-# 🧠 Binance + OpenAI
+# 🔌 Підключення
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
 client = OpenAI(api_key=OPENAI_API_KEY)
 last_open_interest = None
 
-# 📩 Telegram notifier
+# 💾 Google Sheets логування
+def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
+        gclient = gspread.authorize(creds)
+        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).sheet1
+        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        row = [now, type_, entry, tp, sl, qty, result or "", comment]
+        sheet.append_row(row)
+    except Exception as e:
+        send_message(f"❌ Sheets error: {e}")
+
+# 📩 Повідомлення в Telegram
 def send_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": text}
     requests.post(url, data=data)
 
-# 📡 API helpers
+# 📈 Дані з ринку
 def get_latest_news():
     try:
         url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
@@ -68,7 +85,7 @@ def get_quantity(symbol: str, usd: float):
         send_message(f"❌ Quantity error: {e}")
         return None
 
-# 🤖 GPT decision
+# 🤖 Рішення GPT
 def ask_gpt_long(news, oi, delta, volume):
     prompt = f"""
 Останні новини:
@@ -97,7 +114,7 @@ Open Interest: {oi:,.0f}
     except:
         return "SKIP"
 
-# 🚀 Торгові функції
+# 🟢 LONG
 def place_long(symbol, usd):
     try:
         positions = binance_client.futures_position_information(symbol=symbol)
@@ -122,9 +139,11 @@ def place_long(symbol, usd):
             stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
 
         send_message(f"🟢 LONG OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+        log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
     except Exception as e:
         send_message(f"❌ Binance LONG error: {e}")
 
+# 🔴 SHORT
 def place_short(symbol, usd):
     try:
         positions = binance_client.futures_position_information(symbol=symbol)
@@ -149,10 +168,11 @@ def place_short(symbol, usd):
             stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
 
         send_message(f"🔴 SHORT OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+        log_to_sheet("SHORT", entry, tp, sl, qty, None, "GPT сигнал")
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
 
-# 📥 Webhook
+# 📬 Webhook
 @app.post("/webhook")
 async def webhook(req: Request):
     global last_open_interest
@@ -173,6 +193,7 @@ async def webhook(req: Request):
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
+
 
 
 
