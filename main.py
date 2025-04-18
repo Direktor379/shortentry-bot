@@ -30,7 +30,6 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 last_open_interest = None
 
 # 📊 Google Sheets
-
 def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -38,6 +37,7 @@ def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
         gclient = gspread.authorize(creds)
 
         print("✅ Авторизація Google Sheets успішна")
+
         sh = gclient.open_by_key(GOOGLE_SHEET_ID)
         print("📄 Таблиця відкрита:", sh.title)
 
@@ -56,14 +56,12 @@ def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
         print(f"❌ Sheets error: {e}")
 
 # 📬 Telegram
-
 def send_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": text}
     requests.post(url, data=data)
 
 # 📈 Ринок
-
 def get_latest_news():
     try:
         url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
@@ -100,8 +98,7 @@ def get_quantity(symbol: str, usd: float):
         send_message(f"❌ Quantity error: {e}")
         return None
 
-# 🤖 GPT рішення
-
+# 🤖 GPT
 def ask_gpt_long(news, oi, delta, volume):
     prompt = f"""
 Останні новини:
@@ -130,8 +127,7 @@ Open Interest: {oi:,.0f}
     except:
         return "SKIP"
 
-# 🔼 LONG
-
+# 🟢 LONG
 def place_long(symbol, usd):
     try:
         positions = binance_client.futures_position_information(symbol=symbol)
@@ -150,18 +146,17 @@ def place_long(symbol, usd):
         sl = round(entry * 0.992, 2)
 
         binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET', stopPrice=tp,
-            closePosition=True, timeInForce="GTC", positionSide='LONG')
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET', stopPrice=sl,
-            closePosition=True, timeInForce="GTC", positionSide='LONG')
+        binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
+            stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
+        binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET',
+            stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
 
         send_message(f"🟢 LONG OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
         log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
     except Exception as e:
         send_message(f"❌ Binance LONG error: {e}")
 
-# 🔻 SHORT
-
+# 🔴 SHORT
 def place_short(symbol, usd):
     try:
         positions = binance_client.futures_position_information(symbol=symbol)
@@ -180,10 +175,10 @@ def place_short(symbol, usd):
         sl = round(entry * 1.008, 2)
 
         binance_client.futures_create_order(symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
-        binance_client.futures_create_order(symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET', stopPrice=tp,
-            closePosition=True, timeInForce="GTC", positionSide='SHORT')
-        binance_client.futures_create_order(symbol=symbol, side='BUY', type='STOP_MARKET', stopPrice=sl,
-            closePosition=True, timeInForce="GTC", positionSide='SHORT')
+        binance_client.futures_create_order(symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
+            stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT')
+        binance_client.futures_create_order(symbol=symbol, side='BUY', type='STOP_MARKET',
+            stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
 
         send_message(f"🔴 SHORT OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
         log_to_sheet("SHORT", entry, tp, sl, qty, None, "GPT сигнал")
@@ -191,7 +186,6 @@ def place_short(symbol, usd):
         send_message(f"❌ Binance SHORT error: {e}")
 
 # 📬 Webhook
-
 @app.post("/webhook")
 async def webhook(req: Request):
     global last_open_interest
@@ -213,21 +207,8 @@ async def webhook(req: Request):
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
 
-# 🚀 Run server
+# 🚀 Запуск сервера
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
-
-
-
-
-
-
-
-
-
-
-
-
-
