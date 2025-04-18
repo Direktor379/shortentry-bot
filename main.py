@@ -19,7 +19,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # CryptoPanic
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
-# Binance API
+# Binance
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
@@ -68,8 +68,8 @@ def place_short(symbol: str, quantity: float):
             symbol=symbol,
             side='SELL',
             type='MARKET',
-            quantity=quantity
-            # positionSide параметр прибрано
+            quantity=quantity,
+            positionSide='SHORT'  # ❗ ВАЖЛИВО: для hedge-mode
         )
         send_message(f"📉 Відкрито SHORT: {symbol}, обсяг: {quantity}")
         return order
@@ -93,6 +93,7 @@ async def webhook(req: Request):
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
+
 
 
 
