@@ -109,6 +109,7 @@ def place_short(symbol: str, usd_amount: float):
         tp_price = round(entry_price * 0.99, 2)
         sl_price = round(entry_price * 1.008, 2)
 
+        # Основний ордер
         order = binance_client.futures_create_order(
             symbol=symbol,
             side='SELL',
@@ -117,22 +118,26 @@ def place_short(symbol: str, usd_amount: float):
             positionSide='SHORT'
         )
 
+        # TP
         binance_client.futures_create_order(
             symbol=symbol,
             side="BUY",
             type="TAKE_PROFIT_MARKET",
             stopPrice=tp_price,
             closePosition=True,
-            timeInForce="GTC"
+            timeInForce="GTC",
+            positionSide='SHORT'
         )
 
+        # SL
         binance_client.futures_create_order(
             symbol=symbol,
             side="BUY",
             type="STOP_MARKET",
             stopPrice=sl_price,
             closePosition=True,
-            timeInForce="GTC"
+            timeInForce="GTC",
+            positionSide='SHORT'
         )
 
         send_message(f"✅ SHORT OPEN {entry_price}\n📦 Обсяг: {quantity} BTC\n🎯 TP: {tp_price}\n🛡 SL: {sl_price}")
@@ -171,6 +176,7 @@ async def webhook(req: Request):
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
+
 
 
 
