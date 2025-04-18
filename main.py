@@ -108,7 +108,11 @@ def place_long(symbol: str, usd_amount: float):
     try:
         positions = binance_client.futures_position_information(symbol=symbol)
         for p in positions:
-            if p["positionSide"] == "LONG" and float(p["positionAmt"]) > 0:
+            if (
+                p.get("symbol") == symbol
+                and p.get("positionSide") == "LONG"
+                and float(p.get("positionAmt", "0")) > 0
+            ):
                 send_message("⚠️ LONG вже відкрито — нову угоду не створено.")
                 return
 
@@ -164,7 +168,7 @@ def place_short(symbol: str, usd_amount: float):
         tp_price = round(entry_price * 0.99, 2)
         sl_price = round(entry_price * 1.008, 2)
 
-        order = binance_client.futures_create_order(
+        binance_client.futures_create_order(
             symbol=symbol,
             side='SELL',
             type='MARKET',
@@ -193,7 +197,7 @@ def place_short(symbol: str, usd_amount: float):
         )
 
         send_message(f"✅ SHORT OPEN {entry_price}\n📦 Обсяг: {quantity} BTC\n🎯 TP: {tp_price}\n🛡 SL: {sl_price}")
-        return order
+        return
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
         return None
@@ -237,6 +241,24 @@ async def run_long_loop():
             volume = get_volume()
             news = get_latest_news()
 
+            # 💡 Фільтр за OI
+            if oi is None or oi < 10000:
+                send_message(f"⚠️ Open Interest ({oi}) занадто малий — LONG пропущено.")
+                await asyncio.sleep(600)
+                continue
+
+            # 💡 Перевірка на відкриту LONG
+            positions = binance_client.futures_position_information(symbol="BTCUSDT")
+            for p in positions:
+                if (
+                    p.get("symbol") == "BTCUSDT"
+                    and p.get("positionSide") == "LONG"
+                    and float(p.get("positionAmt", "0")) > 0
+                ):
+                    send_message("⚠️ LONG вже відкрито — аналіз пропущено.")
+                    await asyncio.sleep(600)
+                    continue
+
             delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest else 0
             last_open_interest = oi
 
@@ -249,7 +271,7 @@ async def run_long_loop():
         except Exception as e:
             send_message(f"❌ LONG loop error: {e}")
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(600)  # ⏱ кожні 10 хв
 
 
 
