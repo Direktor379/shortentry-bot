@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 import requests
 import os
+import asyncio
 from dotenv import load_dotenv
 from openai import OpenAI
 from binance.client import Client
@@ -8,21 +9,16 @@ from binance.client import Client
 load_dotenv()
 app = FastAPI()
 
-# Telegram
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-
-# GPT
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-# CryptoPanic
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
-
-# Binance
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
+
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY)
+last_open_interest = None
 
 def send_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -32,99 +28,177 @@ def send_message(text: str):
 def get_latest_news():
     try:
         url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
-        response = requests.get(url)
-        news = response.json()
-        headlines = [item["title"] for item in news.get("results", [])[:3]]
-        return "\n".join(headlines)
+        r = requests.get(url)
+        news = r.json()
+        return "\n".join([item["title"] for item in news.get("results", [])[:3]])
     except:
         return "⚠️ Новини не вдалося завантажити."
 
-def ask_gpt(signal: str, news: str, unrealized_profit: float = 0):
+def get_open_interest(symbol="BTCUSDT"):
+    try:
+        r = requests.get("https://fapi.binance.com/fapi/v1/openInterest", params={"symbol": symbol})
+        return float(r.json()["openInterest"]) if r.ok else None
+    except:
+        return None
+
+def get_volume(symbol="BTCUSDT"):
+    try:
+        data = binance_client.futures_klines(symbol=symbol, interval="1m", limit=1)
+        return float(data[-1][7])
+    except:
+        return None
+
+def get_quantity(symbol: str, usd: float):
+    try:
+        info = binance_client.futures_exchange_info()
+        price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        for s in info["symbols"]:
+            if s["symbol"] == symbol:
+                step = float(next(f["stepSize"] for f in s["filters"] if f["filterType"] == "LOT_SIZE"))
+                qty = usd / price
+                return round(qty - (qty % step), 8)
+    except Exception as e:
+        send_message(f"❌ Quantity error: {e}")
+        return None
+
+def ask_gpt_long(news, oi, delta, volume):
     prompt = f"""
 Останні новини:
 {news}
 
-Сигнал: "{signal}"
-Наразі позиція у прибутку: {unrealized_profit}%
+Open Interest: {oi:,.0f}
+Зміна: {delta:.2f}%
+Обʼєм за 1хв: {volume}
 
-Питання: чи варто підтягнути стоп ближче до поточної ціни?
+Чи варто відкривати LONG?
 
-Відповідай одним із варіантів:
-- Підтягнути до беззбитку
-- Підтягнути до +0.5%
-- Не підтягувати
+Одна відповідь:
+- LONG
+- BOOSTED_LONG
+- SKIP
 """
     try:
-        response = client.chat.completions.create(
+        res = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "Ти трейдинг-аналітик. Допомагаєш з підтягуванням стопу у позиції."},
-                {"role": "user", "content": prompt.strip()}
+                {"role": "system", "content": "Ти трейдинг-аналітик. Відповідай: LONG, BOOSTED_LONG або SKIP."},
+                {"role": "user", "content": prompt}
             ]
         )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"GPT error: {e}"
+        return res.choices[0].message.content.strip()
+    except:
+        return "SKIP"
 
-def place_short(symbol: str, usd_amount: float):
+def place_long(symbol, usd):
     try:
-        mark_price_data = binance_client.futures_mark_price(symbol=symbol)
-        entry_price = float(mark_price_data["markPrice"])
-        quantity = round(usd_amount / entry_price, 5)  # 🔄 Динамічний розрахунок
-        tp_price = round(entry_price * 0.99, 2)  # тейк -1%
-        sl_price = round(entry_price * 1.008, 2)  # стоп +0.8%
+        positions = binance_client.futures_position_information(symbol=symbol)
+        if any(p["positionSide"] == "LONG" and float(p["positionAmt"]) > 0 for p in positions):
+            send_message("⚠️ LONG вже відкрито")
+            return
 
-        order = binance_client.futures_create_order(
-            symbol=symbol,
-            side='SELL',
-            type='MARKET',
-            quantity=quantity,
-            positionSide='SHORT'
-        )
+        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        qty = get_quantity(symbol, usd)
+        if not qty:
+            send_message("❌ Обсяг не визначено.")
+            return
 
-        # тейк-профіт
-        binance_client.futures_create_order(
-            symbol=symbol,
-            side="BUY",
-            type="TAKE_PROFIT_MARKET",
-            stopPrice=tp_price,
-            closePosition=True,
-            timeInForce="GTC"
-        )
+        tp = round(entry * 1.015, 2)
+        sl = round(entry * 0.992, 2)
 
-        # стоп-лосс
-        binance_client.futures_create_order(
-            symbol=symbol,
-            side="BUY",
-            type="STOP_MARKET",
-            stopPrice=sl_price,
-            closePosition=True,
-            timeInForce="GTC"
-        )
+        binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
+        binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
+            stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
+        binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET',
+            stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
 
-        send_message(f"✅ SHORT OPEN {entry_price}\n📦 Обсяг: {quantity} BTC\n🎯 TP: {tp_price}\n🛡 SL: {sl_price}")
-        return order
+        send_message(f"🟢 LONG OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+    except Exception as e:
+        send_message(f"❌ Binance LONG error: {e}")
+
+def place_short(symbol, usd):
+    try:
+        positions = binance_client.futures_position_information(symbol=symbol)
+        if any(p["positionSide"] == "SHORT" and float(p["positionAmt"]) > 0 for p in positions):
+            send_message("⚠️ SHORT вже відкрито")
+            return
+
+        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        qty = get_quantity(symbol, usd)
+        if not qty:
+            send_message("❌ Обсяг не визначено.")
+            return
+
+        tp = round(entry * 0.99, 2)
+        sl = round(entry * 1.008, 2)
+
+        binance_client.futures_create_order(symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
+        binance_client.futures_create_order(symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
+            stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT')
+        binance_client.futures_create_order(symbol=symbol, side='BUY', type='STOP_MARKET',
+            stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
+
+        send_message(f"🔴 SHORT OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
-        return None
 
 @app.post("/webhook")
 async def webhook(req: Request):
+    global last_open_interest
     try:
-        body = await req.body()
-        signal = body.decode("utf-8").strip()
-        news = get_latest_news()
+        data = await req.json()
+        signal = data.get("message", "").strip().upper()
 
-        gpt_entry = ask_gpt(signal, news)
-        send_message(f"🧠 GPT сигнал: {gpt_entry}")
+        oi = get_open_interest("BTCUSDT")
+        delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
+        last_open_interest = oi
 
-        if gpt_entry in ["SHORT", "BOOSTED_SHORT"]:
-            place_short(symbol="BTCUSDT", usd_amount=1000)
+        if signal == "SHORT":
+            place_short("BTCUSDT", 1000)
+        elif signal == "LONG":
+            place_long("BTCUSDT", 1000)
 
         return {"ok": True}
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
+
+@app.on_event("startup")
+async def long_loop():
+    global last_open_interest
+    await asyncio.sleep(5)
+    while True:
+        try:
+            oi = get_open_interest()
+            if not oi or oi < 10000:
+                send_message(f"⚠️ OI занадто низький: {oi}")
+                await asyncio.sleep(600)
+                continue
+
+            pos = binance_client.futures_position_information(symbol="BTCUSDT")
+            if any(p["positionSide"] == "LONG" and float(p["positionAmt"]) > 0 for p in pos):
+                send_message("⛔️ LONG вже є — скіпаю")
+                await asyncio.sleep(600)
+                continue
+
+            volume = get_volume()
+            news = get_latest_news()
+            delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest else 0
+            last_open_interest = oi
+
+            decision = ask_gpt_long(news, oi, delta, volume)
+            send_message(f"🤖 GPT LONG: {decision}")
+            if decision in ["LONG", "BOOSTED_LONG"]:
+                place_long("BTCUSDT", 1000)
+
+        except Exception as e:
+            send_message(f"❌ LONG loop error: {e}")
+        await asyncio.sleep(600)  # ⏱ кожні 10 хв
+
+# ⏯ Для Render
+import uvicorn
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=10000)
+
 
 
 
