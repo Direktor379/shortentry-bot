@@ -5,9 +5,14 @@ import asyncio
 from dotenv import load_dotenv
 from openai import OpenAI
 from binance.client import Client
+import uvicorn
 
 load_dotenv()
 app = FastAPI()
+
+@app.get("/")
+async def healthcheck():
+    return {"status": "running"}
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -194,10 +199,9 @@ async def long_loop():
             send_message(f"❌ LONG loop error: {e}")
         await asyncio.sleep(600)  # ⏱ кожні 10 хв
 
-# ⏯ Для Render
-import uvicorn
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=10000)
+
 
 
 
