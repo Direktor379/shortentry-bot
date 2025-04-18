@@ -93,6 +93,7 @@ Open Interest: {oi:,.0f}
         return res.choices[0].message.content.strip()
     except:
         return "SKIP"
+
 def place_long(symbol, usd):
     try:
         positions = binance_client.futures_position_information(symbol=symbol)
@@ -196,10 +197,13 @@ async def long_loop():
 
         except Exception as e:
             send_message(f"❌ LONG loop error: {e}")
-        await asyncio.sleep(600)  # ⏱ кожні 10 хв
+        await asyncio.sleep(600)
 
+# ⬇️ Ось ця частина була оновлена
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
+
 
 
 
