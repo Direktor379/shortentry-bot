@@ -93,7 +93,6 @@ Open Interest: {oi:,.0f}
         return res.choices[0].message.content.strip()
     except:
         return "SKIP"
-
 def place_long(symbol, usd):
     try:
         positions = binance_client.futures_position_information(symbol=symbol)
@@ -201,10 +200,6 @@ async def long_loop():
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=10000)
-
-
-
-
 
 
 
