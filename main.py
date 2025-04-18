@@ -341,6 +341,47 @@ async def monitor_trailing_stops():
             pass
         await asyncio.sleep(15)
 
+
+# 🤖 Автоаналіз щохвилини
+async def monitor_auto_signals():
+    global last_open_interest
+    while True:
+        try:
+            news = get_latest_news()
+            oi = get_open_interest("BTCUSDT")
+            volume = get_volume("BTCUSDT")
+            if not oi or not volume:
+                await asyncio.sleep(60)
+                continue
+
+            delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest else 0
+            last_open_interest = oi
+
+            signal = "LONG" if delta > 0.2 else "SHORT" if delta < -0.2 else None
+
+            if not signal:
+                await asyncio.sleep(60)
+                continue
+
+            decision = ask_gpt_trade(signal, news, oi, delta, volume)
+
+            if decision == "SKIP":
+                await asyncio.sleep(60)
+                continue
+
+            send_message(f"🤖 GPT (автоаналіз): {decision}")
+            log_to_sheet("GPT_DECISION", "", "", "", "", "", f"AUTO {signal} → {decision}")
+
+            if decision in ["LONG", "BOOSTED_LONG"]:
+                place_long("BTCUSDT", 1000)
+            elif decision in ["SHORT", "BOOSTED_SHORT"]:
+                place_short("BTCUSDT", 1000)
+
+        except Exception as e:
+            send_message(f"❌ Auto signal error: {e}")
+        await asyncio.sleep(60)
+
+
 # 🚀 Запуск
 if __name__ == "__main__":
     import uvicorn
@@ -353,14 +394,20 @@ if __name__ == "__main__":
         asyncio.run(monitor_closures())
 
     def start_trailing():
+    asyncio.run(monitor_trailing_stops())
+
+def start_auto_signals():
+    asyncio.run(monitor_auto_signals())
         asyncio.run(monitor_trailing_stops())
 
     threading.Thread(target=start_ws).start()
     threading.Thread(target=start_closures).start()
     threading.Thread(target=start_trailing).start()
+    threading.Thread(target=start_auto_signals).start()
 
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
+
 
 
 
