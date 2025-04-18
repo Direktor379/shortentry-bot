@@ -4,3 +4,5 @@ requests
 python-dotenv
 openai>=1.0.0
 python-binance
+gspread
+oauth2client
