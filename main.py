@@ -33,7 +33,7 @@ def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
         gclient = gspread.authorize(creds)
-        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheet("Аркуш1")  # 👈 Вказуємо назву листа
+        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheets()[0] # 👈 Вказуємо назву листа
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         row = [now, type_, entry, tp, sl, qty, result or "", comment]
         sheet.append_row(row)
