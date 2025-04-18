@@ -69,6 +69,7 @@ def place_short(symbol: str, quantity: float):
             side='SELL',
             type='MARKET',
             quantity=quantity
+            # positionSide параметр прибрано
         )
         send_message(f"📉 Відкрито SHORT: {symbol}, обсяг: {quantity}")
         return order
@@ -92,6 +93,7 @@ async def webhook(req: Request):
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
+
 
 
 
