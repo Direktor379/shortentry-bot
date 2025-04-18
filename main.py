@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Request
 import requests
 import os
-import asyncio
 from dotenv import load_dotenv
 from openai import OpenAI
 from binance.client import Client
@@ -13,6 +12,7 @@ app = FastAPI()
 async def healthcheck():
     return {"status": "running"}
 
+# 🔐 API keys
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -20,15 +20,18 @@ NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
 
+# 🧠 Binance + OpenAI
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
 client = OpenAI(api_key=OPENAI_API_KEY)
 last_open_interest = None
 
+# 📩 Telegram notifier
 def send_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": text}
     requests.post(url, data=data)
 
+# 📡 API helpers
 def get_latest_news():
     try:
         url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
@@ -65,6 +68,7 @@ def get_quantity(symbol: str, usd: float):
         send_message(f"❌ Quantity error: {e}")
         return None
 
+# 🤖 GPT decision
 def ask_gpt_long(news, oi, delta, volume):
     prompt = f"""
 Останні новини:
@@ -93,10 +97,12 @@ Open Interest: {oi:,.0f}
     except:
         return "SKIP"
 
+# 🚀 Торгові функції
 def place_long(symbol, usd):
     try:
         positions = binance_client.futures_position_information(symbol=symbol)
-        if any(p["positionSide"] == "LONG" and float(p["positionAmt"]) > 0 for p in positions):
+        long_pos = next((p for p in positions if p["positionSide"] == "LONG"), None)
+        if long_pos and abs(float(long_pos["positionAmt"])) > 0:
             send_message("⚠️ LONG вже відкрито")
             return
 
@@ -122,7 +128,8 @@ def place_long(symbol, usd):
 def place_short(symbol, usd):
     try:
         positions = binance_client.futures_position_information(symbol=symbol)
-        if any(p["positionSide"] == "SHORT" and float(p["positionAmt"]) > 0 for p in positions):
+        short_pos = next((p for p in positions if p["positionSide"] == "SHORT"), None)
+        if short_pos and abs(float(short_pos["positionAmt"])) > 0:
             send_message("⚠️ SHORT вже відкрито")
             return
 
@@ -145,6 +152,7 @@ def place_short(symbol, usd):
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
 
+# 📥 Webhook
 @app.post("/webhook")
 async def webhook(req: Request):
     global last_open_interest
@@ -165,6 +173,7 @@ async def webhook(req: Request):
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
+
 
 
 
