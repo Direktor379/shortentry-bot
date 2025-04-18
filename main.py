@@ -5,7 +5,6 @@ import asyncio
 from dotenv import load_dotenv
 from openai import OpenAI
 from binance.client import Client
-import uvicorn
 
 load_dotenv()
 app = FastAPI()
@@ -93,6 +92,7 @@ Open Interest: {oi:,.0f}
         return res.choices[0].message.content.strip()
     except:
         return "SKIP"
+
 def place_long(symbol, usd):
     try:
         positions = binance_client.futures_position_information(symbol=symbol)
@@ -166,41 +166,6 @@ async def webhook(req: Request):
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
 
-@app.on_event("startup")
-async def long_loop():
-    global last_open_interest
-    await asyncio.sleep(5)
-    while True:
-        try:
-            oi = get_open_interest()
-            if not oi or oi < 10000:
-                send_message(f"⚠️ OI занадто низький: {oi}")
-                await asyncio.sleep(600)
-                continue
-
-            pos = binance_client.futures_position_information(symbol="BTCUSDT")
-            if any(p["positionSide"] == "LONG" and float(p["positionAmt"]) > 0 for p in pos):
-                send_message("⛔️ LONG вже є — скіпаю")
-                await asyncio.sleep(600)
-                continue
-
-            volume = get_volume()
-            news = get_latest_news()
-            delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest else 0
-            last_open_interest = oi
-
-            decision = ask_gpt_long(news, oi, delta, volume)
-            send_message(f"🤖 GPT LONG: {decision}")
-            if decision in ["LONG", "BOOSTED_LONG"]:
-                place_long("BTCUSDT", 1000)
-
-        except Exception as e:
-            send_message(f"❌ LONG loop error: {e}")
-        await asyncio.sleep(600)  # ⏱ кожні 10 хв
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
 
 
 
