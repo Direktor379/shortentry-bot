@@ -33,20 +33,14 @@ last_open_interest = None
 
 def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
     try:
-       def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
-    try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
         gclient = gspread.authorize(creds)
 
-        # 🟨 Додатковий дебаг
         print("✅ Авторизація Google Sheets успішна")
-
-        # ⛏ Спробуй відкрити файл
         sh = gclient.open_by_key(GOOGLE_SHEET_ID)
         print("📄 Таблиця відкрита:", sh.title)
 
-        # 🔎 Доступні листи
         sheets = sh.worksheets()
         print("📑 Листи:", [s.title for s in sheets])
 
@@ -60,7 +54,7 @@ def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
     except Exception as e:
         send_message(f"❌ Sheets error: {e}")
         print(f"❌ Sheets error: {e}")
-        
+
 # 📬 Telegram
 
 def send_message(text: str):
