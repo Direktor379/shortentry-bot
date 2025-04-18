@@ -15,7 +15,6 @@ app = FastAPI()
 async def healthcheck():
     return {"status": "running"}
 
-# 🔐 Ключі
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -24,31 +23,32 @@ BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
 GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 
-# 🔌 Підключення
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
 client = OpenAI(api_key=OPENAI_API_KEY)
 last_open_interest = None
 
-# 💾 Google Sheets логування
+# 🔁 Google Sheets логування
 def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
         gclient = gspread.authorize(creds)
-        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).sheet1
+        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheet("Аркуш1")  # 👈 Вказуємо назву листа
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         row = [now, type_, entry, tp, sl, qty, result or "", comment]
         sheet.append_row(row)
+        print("✅ Запис додано в Google Sheets.")
     except Exception as e:
         send_message(f"❌ Sheets error: {e}")
+        print(f"❌ Sheets error: {e}")
 
-# 📩 Повідомлення в Telegram
+# 📬 Telegram
 def send_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": text}
     requests.post(url, data=data)
 
-# 📈 Дані з ринку
+# 📈 Ринок
 def get_latest_news():
     try:
         url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
@@ -85,7 +85,7 @@ def get_quantity(symbol: str, usd: float):
         send_message(f"❌ Quantity error: {e}")
         return None
 
-# 🤖 Рішення GPT
+# 🤖 GPT LONG
 def ask_gpt_long(news, oi, delta, volume):
     prompt = f"""
 Останні новини:
@@ -193,6 +193,7 @@ async def webhook(req: Request):
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
+
 
 
 
