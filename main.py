@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 import requests
 import os
+import asyncio
 from dotenv import load_dotenv
 from openai import OpenAI
 from binance.client import Client
@@ -24,7 +25,7 @@ BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
 
-# Пам'ять для Open Interest
+# Пам'ять
 last_open_interest = None
 
 def send_message(text: str):
@@ -54,35 +55,12 @@ def get_open_interest(symbol="BTCUSDT"):
     except:
         return None
 
-def ask_gpt(signal: str, news: str, open_interest: float, delta_percent: float):
-    oi_str = f"{open_interest:,.0f}" if open_interest is not None else "невідомо"
-    delta_str = f"{delta_percent:.2f}%" if delta_percent is not None else "0.00%"
-
-    prompt = f"""
-Останні новини:
-{news}
-
-Open Interest (поточне): {oi_str}
-Зміна Open Interest з минулого сигналу: {delta_str}
-
-Сигнал із TradingView: "{signal}"
-
-Враховуючи зміну Open Interest, новини і сигнал — відповідай одним словом:
-- SHORT
-- BOOSTED_SHORT
-- SKIP
-"""
+def get_volume(symbol="BTCUSDT"):
     try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Ти трейдинг-аналітик. Приймай рішення тільки: SHORT, BOOSTED_SHORT або SKIP."},
-                {"role": "user", "content": prompt.strip()}
-            ]
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"GPT error: {e}"
+        klines = binance_client.futures_klines(symbol=symbol, interval="1m", limit=1)
+        return float(klines[-1][7])  # обʼєм
+    except:
+        return None
 
 def get_quantity(symbol: str, usd_amount: float):
     try:
@@ -98,53 +76,77 @@ def get_quantity(symbol: str, usd_amount: float):
         send_message(f"❌ Quantity error: {e}")
         return None
 
-def place_short(symbol: str, usd_amount: float):
+def ask_gpt_long(news: str, oi: float, delta_oi: float, volume: float):
+    prompt = f"""
+Останні новини:
+{news}
+
+Open Interest: {oi:,.0f}
+Зміна Open Interest: {delta_oi:.2f}%
+Обʼєм за 1 хвилину: {volume} USDT
+
+Питання: чи варто відкривати LONG позицію?
+
+Відповідай лише одним словом:
+- LONG
+- BOOSTED_LONG
+- SKIP
+"""
     try:
-        entry_price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-        quantity = get_quantity(symbol, usd_amount)
-        if quantity is None or quantity == 0:
-            send_message("❌ Неможливо розрахувати обсяг. Угоду не відкрито.")
-            return None
-
-        tp_price = round(entry_price * 0.99, 2)
-        sl_price = round(entry_price * 1.008, 2)
-
-        # Основний ордер
-        order = binance_client.futures_create_order(
-            symbol=symbol,
-            side='SELL',
-            type='MARKET',
-            quantity=quantity,
-            positionSide='SHORT'
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Ти трейдинг-аналітик. Відповідай тільки: LONG, BOOSTED_LONG або SKIP."},
+                {"role": "user", "content": prompt.strip()}
+            ]
         )
-
-        # TP
-        binance_client.futures_create_order(
-            symbol=symbol,
-            side="BUY",
-            type="TAKE_PROFIT_MARKET",
-            stopPrice=tp_price,
-            closePosition=True,
-            timeInForce="GTC",
-            positionSide='SHORT'
-        )
-
-        # SL
-        binance_client.futures_create_order(
-            symbol=symbol,
-            side="BUY",
-            type="STOP_MARKET",
-            stopPrice=sl_price,
-            closePosition=True,
-            timeInForce="GTC",
-            positionSide='SHORT'
-        )
-
-        send_message(f"✅ SHORT OPEN {entry_price}\n📦 Обсяг: {quantity} BTC\n🎯 TP: {tp_price}\n🛡 SL: {sl_price}")
-        return order
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        send_message(f"❌ Binance SHORT error: {e}")
-        return None
+        send_message(f"❌ GPT error: {e}")
+        return "SKIP"
+
+def place_long(symbol: str, usd_amount: float):
+    try:
+        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        qty = get_quantity(symbol, usd_amount)
+        if not qty or qty == 0:
+            send_message("❌ Неможливо визначити обсяг для LONG.")
+            return
+
+        tp = round(entry * 1.015, 2)
+        sl = round(entry * 0.992, 2)
+
+        binance_client.futures_create_order(
+            symbol=symbol,
+            side='BUY',
+            type='MARKET',
+            quantity=qty,
+            positionSide='LONG'
+        )
+
+        binance_client.futures_create_order(
+            symbol=symbol,
+            side="SELL",
+            type="TAKE_PROFIT_MARKET",
+            stopPrice=tp,
+            closePosition=True,
+            timeInForce="GTC",
+            positionSide="LONG"
+        )
+
+        binance_client.futures_create_order(
+            symbol=symbol,
+            side="SELL",
+            type="STOP_MARKET",
+            stopPrice=sl,
+            closePosition=True,
+            timeInForce="GTC",
+            positionSide="LONG"
+        )
+
+        send_message(f"🟢 LONG OPEN {entry}\n📦 Обсяг: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+    except Exception as e:
+        send_message(f"❌ Binance LONG error: {e}")
 
 @app.post("/webhook")
 async def webhook(req: Request):
@@ -166,9 +168,7 @@ async def webhook(req: Request):
 
         last_open_interest = oi_now
 
-        gpt_response = ask_gpt(signal, news, oi_now, delta_percent)
-        send_message(f"🧠 GPT-відповідь: {gpt_response}")
-
+        gpt_response = signal  # коротко, бо signal вже від TradingView
         if gpt_response in ["SHORT", "BOOSTED_SHORT"]:
             place_short(symbol="BTCUSDT", usd_amount=1000)
 
@@ -177,6 +177,38 @@ async def webhook(req: Request):
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
 
+# ⏱ LONG-цикл щохвилини
+async def long_checker():
+    global last_open_interest
+    await asyncio.sleep(5)  # стартова затримка
+    while True:
+        try:
+            oi_now = get_open_interest()
+            volume = get_volume()
+            news = get_latest_news()
+
+            if oi_now and last_open_interest:
+                delta = ((oi_now - last_open_interest) / last_open_interest) * 100
+            else:
+                delta = 0
+
+            last_open_interest = oi_now
+
+            gpt_decision = ask_gpt_long(news, oi_now, delta, volume)
+            send_message(f"🤖 GPT по LONG: {gpt_decision}")
+
+            if gpt_decision in ["LONG", "BOOSTED_LONG"]:
+                place_long("BTCUSDT", 1000)
+
+        except Exception as e:
+            send_message(f"❌ LONG loop error: {e}")
+
+        await asyncio.sleep(60)  # чекати 1 хвилину
+
+# Запуск фонового loop при старті сервера
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(long_checker())
 
 
 
