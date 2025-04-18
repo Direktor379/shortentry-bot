@@ -25,7 +25,7 @@ BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
 
-# Пам'ять
+# Памʼять
 last_open_interest = None
 
 def send_message(text: str):
@@ -58,7 +58,7 @@ def get_open_interest(symbol="BTCUSDT"):
 def get_volume(symbol="BTCUSDT"):
     try:
         klines = binance_client.futures_klines(symbol=symbol, interval="1m", limit=1)
-        return float(klines[-1][7])  # обʼєм
+        return float(klines[-1][7])
     except:
         return None
 
@@ -83,11 +83,11 @@ def ask_gpt_long(news: str, oi: float, delta_oi: float, volume: float):
 
 Open Interest: {oi:,.0f}
 Зміна Open Interest: {delta_oi:.2f}%
-Обʼєм за 1 хвилину: {volume} USDT
+Обʼєм за 1 хвилину: {volume}
 
 Питання: чи варто відкривати LONG позицію?
 
-Відповідай лише одним словом:
+Відповідай одним словом:
 - LONG
 - BOOSTED_LONG
 - SKIP
@@ -101,12 +101,17 @@ Open Interest: {oi:,.0f}
             ]
         )
         return response.choices[0].message.content.strip()
-    except Exception as e:
-        send_message(f"❌ GPT error: {e}")
+    except:
         return "SKIP"
 
 def place_long(symbol: str, usd_amount: float):
     try:
+        positions = binance_client.futures_position_information(symbol=symbol)
+        for p in positions:
+            if p["positionSide"] == "LONG" and float(p["positionAmt"]) > 0:
+                send_message("⚠️ LONG вже відкрито — нову угоду не створено.")
+                return
+
         entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
         qty = get_quantity(symbol, usd_amount)
         if not qty or qty == 0:
@@ -148,18 +153,63 @@ def place_long(symbol: str, usd_amount: float):
     except Exception as e:
         send_message(f"❌ Binance LONG error: {e}")
 
+def place_short(symbol: str, usd_amount: float):
+    try:
+        entry_price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        quantity = get_quantity(symbol, usd_amount)
+        if quantity is None or quantity == 0:
+            send_message("❌ Неможливо розрахувати обсяг. Угоду не відкрито.")
+            return None
+
+        tp_price = round(entry_price * 0.99, 2)
+        sl_price = round(entry_price * 1.008, 2)
+
+        order = binance_client.futures_create_order(
+            symbol=symbol,
+            side='SELL',
+            type='MARKET',
+            quantity=quantity,
+            positionSide='SHORT'
+        )
+
+        binance_client.futures_create_order(
+            symbol=symbol,
+            side="BUY",
+            type="TAKE_PROFIT_MARKET",
+            stopPrice=tp_price,
+            closePosition=True,
+            timeInForce="GTC",
+            positionSide='SHORT'
+        )
+
+        binance_client.futures_create_order(
+            symbol=symbol,
+            side="BUY",
+            type="STOP_MARKET",
+            stopPrice=sl_price,
+            closePosition=True,
+            timeInForce="GTC",
+            positionSide='SHORT'
+        )
+
+        send_message(f"✅ SHORT OPEN {entry_price}\n📦 Обсяг: {quantity} BTC\n🎯 TP: {tp_price}\n🛡 SL: {sl_price}")
+        return order
+    except Exception as e:
+        send_message(f"❌ Binance SHORT error: {e}")
+        return None
+
 @app.post("/webhook")
 async def webhook(req: Request):
     global last_open_interest
     try:
-        body = await req.body()
-        signal = body.decode("utf-8").strip()
+        data = await req.json()
+        signal = data.get("message", "").strip()
 
         news = get_latest_news()
         oi_now = get_open_interest("BTCUSDT")
 
         if oi_now is None:
-            send_message("⚠️ Open Interest не вдалося завантажити. Пропускаємо сигнал.")
+            send_message("⚠️ Open Interest не вдалося завантажити.")
             return {"error": "Open Interest is None"}
 
         delta_percent = 0
@@ -168,47 +218,39 @@ async def webhook(req: Request):
 
         last_open_interest = oi_now
 
-        gpt_response = signal  # коротко, бо signal вже від TradingView
-        if gpt_response in ["SHORT", "BOOSTED_SHORT"]:
-            place_short(symbol="BTCUSDT", usd_amount=1000)
+        if signal in ["SHORT", "BOOSTED_SHORT"]:
+            place_short("BTCUSDT", 1000)
 
         return {"ok": True}
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
 
-# ⏱ LONG-цикл щохвилини
-async def long_checker():
+# ⏱ Фоновий LONG аналізатор
+@app.on_event("startup")
+async def run_long_loop():
     global last_open_interest
-    await asyncio.sleep(5)  # стартова затримка
+    await asyncio.sleep(5)
     while True:
         try:
-            oi_now = get_open_interest()
+            oi = get_open_interest()
             volume = get_volume()
             news = get_latest_news()
 
-            if oi_now and last_open_interest:
-                delta = ((oi_now - last_open_interest) / last_open_interest) * 100
-            else:
-                delta = 0
+            delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest else 0
+            last_open_interest = oi
 
-            last_open_interest = oi_now
+            decision = ask_gpt_long(news, oi, delta, volume)
+            send_message(f"🤖 GPT по LONG: {decision}")
 
-            gpt_decision = ask_gpt_long(news, oi_now, delta, volume)
-            send_message(f"🤖 GPT по LONG: {gpt_decision}")
-
-            if gpt_decision in ["LONG", "BOOSTED_LONG"]:
+            if decision in ["LONG", "BOOSTED_LONG"]:
                 place_long("BTCUSDT", 1000)
 
         except Exception as e:
             send_message(f"❌ LONG loop error: {e}")
 
-        await asyncio.sleep(60)  # чекати 1 хвилину
+        await asyncio.sleep(60)
 
-# Запуск фонового loop при старті сервера
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(long_checker())
 
 
 
