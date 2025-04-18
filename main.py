@@ -42,16 +42,14 @@ def get_latest_news():
     except:
         return "⚠️ Новини не вдалося завантажити."
 
-def get_open_interest(symbol="BTCUSDT", interval="5m"):
+def get_open_interest(symbol="BTCUSDT"):
     try:
-        url = "https://fapi.binance.com/futures/data/openInterest"
-        params = {"symbol": symbol, "period": interval}
+        url = "https://fapi.binance.com/fapi/v1/openInterest"
+        params = {"symbol": symbol}
         response = requests.get(url, params=params)
         if response.status_code == 200:
             data = response.json()
-            if isinstance(data, list) and len(data) > 0:
-                latest = data[-1]
-                return float(latest["sumOpenInterest"])
+            return float(data["openInterest"])
         return None
     except:
         return None
@@ -134,7 +132,7 @@ async def webhook(req: Request):
         signal = body.decode("utf-8").strip()
 
         news = get_latest_news()
-        oi_now = get_open_interest("BTCUSDT", "5m")
+        oi_now = get_open_interest("BTCUSDT")
 
         if oi_now is None:
             send_message("⚠️ Open Interest не вдалося завантажити. Пропускаємо сигнал.")
@@ -156,6 +154,7 @@ async def webhook(req: Request):
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
+
 
 
 
