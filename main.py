@@ -71,8 +71,8 @@ def update_result_in_sheet(type_, result, pnl=None):
                     sheet.update_cell(i + 1, 8, f"{pnl} USDT")
                 break
     except Exception as e:
-        send_message(f"❌ Update result error
-        from fastapi import FastAPI, Request
+        send_message(f"❌ Update result error: {e}")
+      from fastapi import FastAPI, Request
 import requests
 import os
 from dotenv import load_dotenv
