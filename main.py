@@ -71,8 +71,85 @@ def update_result_in_sheet(type_, result, pnl=None):
                     sheet.update_cell(i + 1, 8, f"{pnl} USDT")
                 break
     except Exception as e:
+        send_message(f"❌ Update result error
+        from fastapi import FastAPI, Request
+import requests
+import os
+from dotenv import load_dotenv
+from openai import OpenAI
+from binance.client import Client
+from datetime import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import asyncio
+import json
+import websockets
+import threading
+
+# 🌍 Завантажуємо змінні середовища
+load_dotenv()
+app = FastAPI()
+
+@app.get("/")
+async def healthcheck():
+    return {"status": "running"}
+
+# 🔐 ENV
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
+BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
+GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
+
+# 🔌 Clients
+binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY)
+last_open_interest = None
+
+# 📬 Telegram
+def send_message(text: str):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = {"chat_id": CHAT_ID, "text": text}
+    try:
+        requests.post(url, data=data)
+    except Exception as e:
+        print(f"Telegram error: {e}")
+
+# 📊 Google Sheets
+def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
+        gclient = gspread.authorize(creds)
+        sh = gclient.open_by_key(GOOGLE_SHEET_ID)
+        sheet = sh.worksheets()[0]
+        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        row = [now, type_, entry, tp, sl, qty, result or "", comment]
+        sheet.append_row(row)
+    except Exception as e:
+        send_message(f"❌ Sheets error: {e}")
+
+def update_result_in_sheet(type_, result, pnl=None):
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
+        gclient = gspread.authorize(creds)
+        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheets()[0]
+        data = sheet.get_all_values()
+        for i in reversed(range(len(data))):
+            if data[i][1] == type_ and data[i][6] == "":
+                sheet.update_cell(i + 1, 7, result)
+                if pnl is not None:
+                    sheet.update_cell(i + 1, 8, f"{pnl} USDT")
+                break
+    except Exception as e:
         send_message(f"❌ Update result error: {e}")
-# 📈 Ринок
+
+# 📊 Ринок
+# Отримання обсягів, OI, VWAP, flat
+
 def get_latest_news():
     try:
         url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
@@ -108,38 +185,10 @@ def get_quantity(symbol: str, usd: float):
     except Exception as e:
         send_message(f"❌ Quantity error: {e}")
         return None
+        # ...попередній код...
 
-# 📏 VWAP обрахунок (10 свічок)
-def calculate_vwap(symbol="BTCUSDT", interval="1m", limit=10):
-    try:
-        candles = binance_client.futures_klines(symbol=symbol, interval=interval, limit=limit)
-        total_volume = 0
-        total_price_volume = 0
-        for candle in candles:
-            high = float(candle[2])
-            low = float(candle[3])
-            close = float(candle[4])
-            volume = float(candle[5])
-            typical_price = (high + low + close) / 3
-            total_volume += volume
-            total_price_volume += typical_price * volume
-        vwap = total_price_volume / total_volume if total_volume > 0 else None
-        return vwap
-    except Exception as e:
-        send_message(f"❌ VWAP error: {e}")
-        return None
-
-# 📉 Флет-фільтр
-def is_flat_zone(symbol="BTCUSDT"):
-    try:
-        price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-        vwap = calculate_vwap(symbol)
-        if not vwap:
-            return False
-        return abs(price - vwap) / price < 0.002
-    except:
-        return False
 # 🤖 GPT
+
 def ask_gpt_trade(type_, news, oi, delta, volume):
     if is_flat_zone("BTCUSDT"):
         return "SKIP"
@@ -193,6 +242,7 @@ Open Interest: {oi:,.0f}
         return "SKIP"
 
 # 📈 Торгівля
+
 def place_long(symbol, usd):
     try:
         entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
@@ -203,10 +253,8 @@ def place_long(symbol, usd):
         tp = round(entry * 1.015, 2)
         sl = round(entry * 0.992, 2)
         binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
-                                            stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET',
-                                            stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
+        binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET', stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
+        binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET', stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
         send_message(f"🟢 LONG OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
         log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
     except Exception as e:
@@ -222,14 +270,14 @@ def place_short(symbol, usd):
         tp = round(entry * 0.99, 2)
         sl = round(entry * 1.008, 2)
         binance_client.futures_create_order(symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
-        binance_client.futures_create_order(symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
-                                            stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT')
-        binance_client.futures_create_order(symbol=symbol, side='BUY', type='STOP_MARKET',
-                                            stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
+        binance_client.futures_create_order(symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET', stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT')
+        binance_client.futures_create_order(symbol=symbol, side='BUY', type='STOP_MARKET', stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
         send_message(f"🔴 SHORT OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
         log_to_sheet("SHORT", entry, tp, sl, qty, None, "GPT сигнал")
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
+# ...попередній код...
+
 # 📬 Webhook
 @app.post("/webhook")
 async def webhook(req: Request):
@@ -293,6 +341,7 @@ async def monitor_agg_trades():
             except Exception as e:
                 send_message(f"⚠️ WebSocket error: {e}")
                 await asyncio.sleep(5)
+
 # 🔄 Моніторинг закриття угод (PnL)
 async def monitor_closures():
     while True:
@@ -311,6 +360,7 @@ async def monitor_closures():
             except Exception:
                 pass
         await asyncio.sleep(60)
+# ...попередній код...
 
 # 🔁 Динамічний трейлінг-стоп
 trailing_stops = {
@@ -322,8 +372,7 @@ async def monitor_trailing_stops():
     while True:
         try:
             for side in ["LONG", "SHORT"]:
-                pos = next((p for p in binance_client.futures_position_information(symbol="BTCUSDT")
-                            if p["positionSide"] == side), None)
+                pos = next((p for p in binance_client.futures_position_information(symbol="BTCUSDT") if p["positionSide"] == side), None)
                 if pos and float(pos["positionAmt"]) != 0:
                     entry = float(pos["entryPrice"])
                     mark = float(binance_client.futures_mark_price(symbol="BTCUSDT")["markPrice"])
@@ -380,7 +429,7 @@ async def monitor_auto_signals():
         except Exception as e:
             send_message(f"❌ Auto signal error: {e}")
         await asyncio.sleep(60)
-
+# ...весь попередній код...
 
 # 🚀 Запуск
 if __name__ == "__main__":
@@ -394,14 +443,10 @@ if __name__ == "__main__":
         asyncio.run(monitor_closures())
 
     def start_trailing():
-    asyncio.run(monitor_trailing_stops())
-
-def start_auto_signals():
-    asyncio.run(monitor_auto_signals())
-
-def start_auto_signals():
-    asyncio.run(monitor_auto_signals())
         asyncio.run(monitor_trailing_stops())
+
+    def start_auto_signals():
+        asyncio.run(monitor_auto_signals())
 
     threading.Thread(target=start_ws).start()
     threading.Thread(target=start_closures).start()
@@ -410,6 +455,7 @@ def start_auto_signals():
 
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
+
 
 
 
