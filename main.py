@@ -398,6 +398,9 @@ if __name__ == "__main__":
 
 def start_auto_signals():
     asyncio.run(monitor_auto_signals())
+
+def start_auto_signals():
+    asyncio.run(monitor_auto_signals())
         asyncio.run(monitor_trailing_stops())
 
     threading.Thread(target=start_ws).start()
@@ -407,7 +410,6 @@ def start_auto_signals():
 
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
-
 
 
 
