@@ -24,7 +24,7 @@ BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
 
-# Зберігаємо останнє значення Open Interest у памʼяті
+# Пам'ять для Open Interest
 last_open_interest = None
 
 def send_message(text: str):
@@ -57,12 +57,15 @@ def get_open_interest(symbol="BTCUSDT", interval="5m"):
         return None
 
 def ask_gpt(signal: str, news: str, open_interest: float, delta_percent: float):
+    oi_str = f"{open_interest:,.0f}" if open_interest is not None else "невідомо"
+    delta_str = f"{delta_percent:.2f}%" if delta_percent is not None else "0.00%"
+
     prompt = f"""
 Останні новини:
 {news}
 
-Open Interest (поточне): {open_interest:,.0f}
-Зміна Open Interest з минулого сигналу: {delta_percent:.2f}%
+Open Interest (поточне): {oi_str}
+Зміна Open Interest з минулого сигналу: {delta_str}
 
 Сигнал із TradingView: "{signal}"
 
@@ -132,12 +135,16 @@ async def webhook(req: Request):
 
         news = get_latest_news()
         oi_now = get_open_interest("BTCUSDT", "5m")
-        delta_percent = 0
 
-        if oi_now is not None and last_open_interest is not None:
+        if oi_now is None:
+            send_message("⚠️ Open Interest не вдалося завантажити. Пропускаємо сигнал.")
+            return {"error": "Open Interest is None"}
+
+        delta_percent = 0
+        if last_open_interest:
             delta_percent = ((oi_now - last_open_interest) / last_open_interest) * 100
 
-        last_open_interest = oi_now  # оновлюємо після кожного запиту
+        last_open_interest = oi_now
 
         gpt_response = ask_gpt(signal, news, oi_now, delta_percent)
         send_message(f"🧠 GPT-відповідь: {gpt_response}")
