@@ -56,6 +56,7 @@ def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
         sheet.append_row(row)
     except Exception as e:
         send_message(f"❌ Sheets error: {e}")
+
 def update_result_in_sheet(type_, result, pnl=None):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -71,7 +72,6 @@ def update_result_in_sheet(type_, result, pnl=None):
                 break
     except Exception as e:
         send_message(f"❌ Update result error: {e}")
-
 # 📈 Ринок
 def get_latest_news():
     try:
@@ -109,8 +109,41 @@ def get_quantity(symbol: str, usd: float):
         send_message(f"❌ Quantity error: {e}")
         return None
 
+# 📏 VWAP обрахунок (10 свічок)
+def calculate_vwap(symbol="BTCUSDT", interval="1m", limit=10):
+    try:
+        candles = binance_client.futures_klines(symbol=symbol, interval=interval, limit=limit)
+        total_volume = 0
+        total_price_volume = 0
+        for candle in candles:
+            high = float(candle[2])
+            low = float(candle[3])
+            close = float(candle[4])
+            volume = float(candle[5])
+            typical_price = (high + low + close) / 3
+            total_volume += volume
+            total_price_volume += typical_price * volume
+        vwap = total_price_volume / total_volume if total_volume > 0 else None
+        return vwap
+    except Exception as e:
+        send_message(f"❌ VWAP error: {e}")
+        return None
+
+# 📉 Флет-фільтр
+def is_flat_zone(symbol="BTCUSDT"):
+    try:
+        price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        vwap = calculate_vwap(symbol)
+        if not vwap:
+            return False
+        return abs(price - vwap) / price < 0.002
+    except:
+        return False
 # 🤖 GPT
 def ask_gpt_trade(type_, news, oi, delta, volume):
+    if is_flat_zone("BTCUSDT"):
+        return "SKIP"
+
     prompt = f"""
 Твоя задача — оцінити трейдинговий сигнал на основі чотирьох факторів:
 
@@ -151,13 +184,14 @@ Open Interest: {oi:,.0f}
         res = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "Ти криптотрейдинг-аналітик. Завжди відповідай лише одним зі слів: LONG, BOOSTED_LONG, SHORT, BOOSTED_SHORT, SKIP."},
+                {"role": "system", "content": "Ти криптотрейдинг-аналітик. Відповідай лише одним зі слів: LONG, BOOSTED_LONG, SHORT, BOOSTED_SHORT, SKIP."},
                 {"role": "user", "content": prompt}
             ]
         )
         return res.choices[0].message.content.strip()
     except:
         return "SKIP"
+
 # 📈 Торгівля
 def place_long(symbol, usd):
     try:
@@ -196,7 +230,6 @@ def place_short(symbol, usd):
         log_to_sheet("SHORT", entry, tp, sl, qty, None, "GPT сигнал")
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
-
 # 📬 Webhook
 @app.post("/webhook")
 async def webhook(req: Request):
@@ -220,7 +253,8 @@ async def webhook(req: Request):
         return {"ok": True}
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
-        return {"error": str(e)}       
+        return {"error": str(e)}
+
 # 🐋 Whale Detector
 agg_trades = []
 
@@ -259,7 +293,6 @@ async def monitor_agg_trades():
             except Exception as e:
                 send_message(f"⚠️ WebSocket error: {e}")
                 await asyncio.sleep(5)
-
 # 🔄 Моніторинг закриття угод (PnL)
 async def monitor_closures():
     while True:
@@ -279,6 +312,35 @@ async def monitor_closures():
                 pass
         await asyncio.sleep(60)
 
+# 🔁 Динамічний трейлінг-стоп
+trailing_stops = {
+    "LONG": None,
+    "SHORT": None
+}
+
+async def monitor_trailing_stops():
+    while True:
+        try:
+            for side in ["LONG", "SHORT"]:
+                pos = next((p for p in binance_client.futures_position_information(symbol="BTCUSDT")
+                            if p["positionSide"] == side), None)
+                if pos and float(pos["positionAmt"]) != 0:
+                    entry = float(pos["entryPrice"])
+                    mark = float(binance_client.futures_mark_price(symbol="BTCUSDT")["markPrice"])
+                    profit_pct = (mark - entry) / entry * 100 if side == "LONG" else (entry - mark) / entry * 100
+
+                    if profit_pct >= 0.5 and not trailing_stops[side]:
+                        trailing_stops[side] = entry  # беззбиток
+                        send_message(f"🛡 {side}: Стоп у беззбиток")
+
+                    if trailing_stops[side] and profit_pct >= 1.0:
+                        new_stop = round(entry * (1 + (profit_pct - 1) / 100), 2) if side == "LONG" else round(entry * (1 - (profit_pct - 1) / 100), 2)
+                        trailing_stops[side] = new_stop
+                        send_message(f"🔁 {side}: Новий трейлінг-стоп {new_stop}")
+        except:
+            pass
+        await asyncio.sleep(15)
+
 # 🚀 Запуск
 if __name__ == "__main__":
     import uvicorn
@@ -290,12 +352,15 @@ if __name__ == "__main__":
     def start_closures():
         asyncio.run(monitor_closures())
 
+    def start_trailing():
+        asyncio.run(monitor_trailing_stops())
+
     threading.Thread(target=start_ws).start()
     threading.Thread(target=start_closures).start()
+    threading.Thread(target=start_trailing).start()
 
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
-
 
 
 
