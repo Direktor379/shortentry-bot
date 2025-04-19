@@ -839,6 +839,65 @@ Winrate по типах:
 
 
 
+# 🧠 Кластерний WebSocket моніторинг
+cluster_data = {}
+
+async def monitor_cluster_trades():
+    uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
+    async with websockets.connect(uri) as websocket:
+        while True:
+            try:
+                msg = json.loads(await websocket.recv())
+                price = round(float(msg["p"]))
+                qty = float(msg["q"])
+                is_sell = msg["m"]
+                side = "sell" if is_sell else "buy"
+                if price not in cluster_data:
+                    cluster_data[price] = {"buy": 0.0, "sell": 0.0}
+                cluster_data[price][side] += qty
+                # очистка старих
+                now = int(datetime.utcnow().timestamp())
+                for p in list(cluster_data.keys()):
+                    if abs(p - price) > 200:
+                        del cluster_data[p]
+            except Exception as e:
+                send_message(f"❌ Cluster WS error: {e}")
+                await asyncio.sleep(5)
+
+# ⏱ GPT кластерний аналіз і самостійне відкриття угод
+async def monitor_gpt_cluster_signals():
+    while True:
+        try:
+            clusters = get_cluster_snapshot()
+            news = get_latest_news()
+            oi = get_open_interest("BTCUSDT")
+            volume = get_volume("BTCUSDT")
+            delta = 0  # опціонально
+            signal = "CLUSTER"
+            decision = ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
+            if decision != "SKIP":
+                send_message(f"🧠 GPT (кластер): {decision}")
+                log_to_sheet("GPT_DECISION", "", "", "", "", "", f"CLUSTER → {decision}")
+                if decision in ["LONG", "BOOSTED_LONG"]:
+                    place_long("BTCUSDT", TRADE_USD_AMOUNT)
+                elif decision in ["SHORT", "BOOSTED_SHORT"]:
+                    place_short("BTCUSDT", TRADE_USD_AMOUNT)
+        except Exception as e:
+            send_message(f"❌ GPT cluster auto error: {e}")
+        await asyncio.sleep(30)
+
+
+
+@app.on_event("startup")
+async def start_all():
+    threading.Thread(target=lambda: asyncio.run(monitor_cluster_trades())).start()
+    threading.Thread(target=lambda: asyncio.run(monitor_gpt_cluster_signals())).start()
+    threading.Thread(target=lambda: asyncio.run(adaptive_trailing_monitor())).start()
+    threading.Thread(target=lambda: asyncio.run(auto_daily_report())).start()
+
+
+
+
 
 
 
