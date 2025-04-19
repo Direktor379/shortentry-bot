@@ -199,7 +199,41 @@ def update_stats_sheet():
         send_message(f"❌ Stats error: {e}")
 
 # 🤖 GPT
+
+def get_last_trades(limit=10):
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
+        gclient = gspread.authorize(creds)
+        sh = gclient.open_by_key(GOOGLE_SHEET_ID)
+        sheet = sh.worksheets()[0]
+        data = sheet.get_all_values()[1:]
+        data.reverse()
+        gpt_logs = [row for row in data if row[1] in ["LONG", "SHORT", "BOOSTED_LONG", "BOOSTED_SHORT"] and row[6]]
+        recent = gpt_logs[:limit]
+        result = [f"{i+1}. {row[1]} → {row[6]}" for i, row in enumerate(recent)]
+        return "\n".join(result)
+    except:
+        return ""
+
+def get_stats_summary():
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
+        gclient = gspread.authorize(creds)
+        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheet("Stats")
+        data = sheet.get_all_values()[1:]
+        lines = []
+        for row in data:
+            if len(row) >= 5:
+                lines.append(f"{row[0]}: {row[4]}%")
+        return "\n".join(lines)
+    except:
+        return "Статистика недоступна."
+
 def ask_gpt_trade(type_, news, oi, delta, volume):
+    recent_trades = get_last_trades()
+    stats_summary = get_stats_summary()
     
     # 🧠 Адаптивний флет-фільтр: блокує тільки якщо немає BOOSTED і обʼєм малий
     if is_flat_zone("BTCUSDT") and "BOOSTED" not in type_ and volume < 300:
@@ -207,7 +241,14 @@ def ask_gpt_trade(type_, news, oi, delta, volume):
 
 
     recent_trades = get_last_trades()
-    prompt = f"""\nGPT минулі сигнали:\n{recent_trades}\n\n
+    prompt = f"""
+GPT минулі сигнали:
+{recent_trades}
+
+Winrate по типах:
+{stats_summary}
+
+\nGPT минулі сигнали:\n{recent_trades}\n\n
 Останні новини:
 {news}
 
@@ -478,7 +519,6 @@ def has_open_position(side):
         return pos and float(pos["positionAmt"]) != 0
     except:
         return False
-
 
 
 
