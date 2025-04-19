@@ -231,7 +231,7 @@ def get_stats_summary():
     except:
         return "Статистика недоступна."
 
-def ask_gpt_trade(type_, news, oi, delta, volume):
+def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
     recent_trades = get_last_trades()
     stats_summary = get_stats_summary()
     
@@ -336,8 +336,9 @@ async def webhook(req: Request):
         delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
         last_open_interest = oi
         volume = get_volume("BTCUSDT")
-        decision = ask_gpt_trade(signal, news, oi, delta, volume)
+        decision = ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
         send_message(f"🤖 GPT вирішив: {decision}")
+        log_gpt_decision(signal, decision)
         log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
         if decision in ["LONG", "BOOSTED_LONG"]:
             place_long("BTCUSDT", TRADE_USD_AMOUNT)
@@ -375,8 +376,9 @@ async def monitor_agg_trades():
                         oi = get_open_interest("BTCUSDT")
                         delta = 0
                         volume = get_volume("BTCUSDT")
-                        decision = ask_gpt_trade(signal, news, oi, delta, volume)
+                        decision = ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
                         send_message(f"🤖 GPT вирішив: {decision}")
+        log_gpt_decision(signal, decision)
                         log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
                         if decision in ["BOOSTED_LONG", "LONG"]:
                             place_long("BTCUSDT", TRADE_USD_AMOUNT)
@@ -451,7 +453,7 @@ async def monitor_auto_signals():
                 await asyncio.sleep(60)
                 continue
 
-            decision = ask_gpt_trade(signal, news, oi, delta, volume)
+            decision = ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
 
             if decision == "SKIP":
                 await asyncio.sleep(60)
@@ -519,6 +521,7 @@ def has_open_position(side):
         return pos and float(pos["positionAmt"]) != 0
     except:
         return False
+
 
 
 
