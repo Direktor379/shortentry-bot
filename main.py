@@ -698,3 +698,85 @@ Winrate по типах:
         return "SKIP"
 
 
+
+
+# 📘 Learning Log + пояснення GPT
+def log_learning_entry(trade_type, result, reason, pnl=None):
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
+        gclient = gspread.authorize(creds)
+        sh = gclient.open_by_key(GOOGLE_SHEET_ID)
+
+        try:
+            sheet = sh.worksheet("Learning Log")
+        except:
+            sheet = sh.add_worksheet(title="Learning Log", rows="1000", cols="10")
+            sheet.append_row(["Time", "Type", "Result", "PnL", "GPT Analysis"])
+
+        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        row = [now, trade_type, result, pnl or "", reason]
+        sheet.append_row(row)
+    except Exception as e:
+        send_message(f"❌ Learning Log error: {e}")
+
+def explain_trade_outcome(trade_type, result, pnl):
+    try:
+        prompt = f"""
+Тип угоди: {trade_type}
+Результат: {result}
+PnL: {pnl}
+
+Поясни коротко (1 реченням), чому результат був таким. Якщо помилка — вкажи її.
+"""
+        res = client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {"role": "system", "content": "Ти трейдинг-аналітик. Поясни результат угоди коротко."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return res.choices[0].message.content.strip()
+    except:
+        return "GPT не зміг проаналізувати угоду"
+
+# 🔁 Перезапис update_result_in_sheet
+def update_result_in_sheet(type_, result, pnl=None):
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
+        gclient = gspread.authorize(creds)
+        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheets()[0]
+        data = sheet.get_all_values()
+        for i in reversed(range(len(data))):
+            if data[i][1] == type_ and data[i][6] == "":
+                sheet.update_cell(i + 1, 7, result)
+                if pnl is not None:
+                    sheet.update_cell(i + 1, 8, f"{pnl} USDT")
+                explanation = explain_trade_outcome(type_, result, pnl or "0")
+                log_learning_entry(type_, result, explanation, pnl)
+                break
+    except Exception as e:
+        send_message(f"❌ Update result error: {e}")
+
+
+
+
+# 📈 Кластерний аналіз (заглушка)
+cluster_data = {
+    65000: {"buy": 80.0, "sell": 20.0},
+    64800: {"buy": 30.0, "sell": 70.0},
+    64700: {"buy": 10.0, "sell": 90.0}
+}
+
+def get_cluster_snapshot(limit=10):
+    try:
+        sorted_clusters = sorted(cluster_data.items(), key=lambda x: x[0], reverse=True)[-limit:]
+        return "\n".join(
+            f"{int(price)}$: BUY {data['buy']:.2f} | SELL {data['sell']:.2f}"
+            for price, data in sorted_clusters
+        )
+    except:
+        return ""
+
+
