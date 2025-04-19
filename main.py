@@ -35,6 +35,11 @@ binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
 client = OpenAI(api_key=OPENAI_API_KEY)
 last_open_interest = None
 
+# === GPT лог для щогодинної статистики
+gpt_decision_log = []
+skip_counter = 0
+
+
 # 📬 Telegram
 def send_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -457,7 +462,18 @@ async def monitor_auto_signals():
                 await asyncio.sleep(60)
                 continue
 
-            send_message(f"🤖 GPT (автоаналіз): {decision}")
+            
+try:
+    print(f"[AUTO] Signal: {signal} → GPT: {decision}")
+except Exception as e:
+    print(f"[AUTO PRINT ERROR]: {e}")
+gpt_decision_log.append(decision)
+global skip_counter
+if decision.startswith("SKIP"):
+    skip_counter += 1
+
+if not decision.startswith("SKIP"):
+    send_message(f"🤖 GPT (автоаналіз): {decision}")
             log_to_sheet("GPT_DECISION", "", "", "", "", "", f"AUTO {signal} → {decision}")
 
             if decision in ["LONG", "BOOSTED_LONG"]:
@@ -486,6 +502,7 @@ if __name__ == "__main__":
     def start_auto_signals():
         asyncio.run(monitor_auto_signals())
     # Запускаємо всі потоки одночасно
+    threading.Thread(target=lambda: asyncio.run(hourly_summary())).start()
     threading.Thread(target=start_ws).start()
     threading.Thread(target=start_closures).start()
     threading.Thread(target=start_trailing).start()
@@ -519,6 +536,7 @@ def has_open_position(side):
         return pos and float(pos["positionAmt"]) != 0
     except:
         return False
+
 
 
 
