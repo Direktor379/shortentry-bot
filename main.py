@@ -28,6 +28,7 @@ NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
 BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
 GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
+TRADE_USD_AMOUNT = float(os.getenv("TRADE_USD_AMOUNT", 1000))
 
 # 🔌 Clients
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
@@ -137,7 +138,7 @@ def is_flat_zone(symbol="BTCUSDT"):
         vwap = calculate_vwap(symbol)
         if not vwap:
             return False
-        return abs(price - vwap) / price < 0.002
+        return abs(price - vwap) / price < 0.005
     except:
         return False
 
@@ -155,6 +156,8 @@ Open Interest: {oi:,.0f}
 Обʼєм за 1хв: {volume}
 
 Сигнал: {type_.upper()}
+
+Якщо сигнал має префікс BOOSTED_, це означає, що зафіксована агресивна торгівля або великий імпульс. У таких випадках рекомендується ПІДТВЕРДИТИ його, крім ситуацій із критичними новинами або дуже слабким обсягом.
 
 Чи підтверджуєш цей сигнал?
 - LONG / BOOSTED_LONG / SHORT / BOOSTED_SHORT / SKIP
@@ -174,6 +177,9 @@ Open Interest: {oi:,.0f}
 # 📈 Торгівля
 
 def place_long(symbol, usd):
+    if has_open_position("LONG"):
+        send_message("⚠️ Уже відкрита LONG позиція")
+        return
     try:
         entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
         qty = get_quantity(symbol, usd)
@@ -193,6 +199,9 @@ def place_long(symbol, usd):
         send_message(f"❌ Binance LONG error: {e}")
 
 def place_short(symbol, usd):
+    if has_open_position("SHORT"):
+        send_message("⚠️ Уже відкрита SHORT позиція")
+        return
     try:
         entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
         qty = get_quantity(symbol, usd)
@@ -228,9 +237,9 @@ async def webhook(req: Request):
         send_message(f"🤖 GPT вирішив: {decision}")
         log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
         if decision in ["LONG", "BOOSTED_LONG"]:
-            place_long("BTCUSDT", 1000)
+            place_long("BTCUSDT", TRADE_USD_AMOUNT)
         elif decision in ["SHORT", "BOOSTED_SHORT"]:
-            place_short("BTCUSDT", 1000)
+            place_short("BTCUSDT", TRADE_USD_AMOUNT)
         return {"ok": True}
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
@@ -267,9 +276,9 @@ async def monitor_agg_trades():
                         send_message(f"🤖 GPT вирішив: {decision}")
                         log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
                         if decision in ["BOOSTED_LONG", "LONG"]:
-                            place_long("BTCUSDT", 1000)
+                            place_long("BTCUSDT", TRADE_USD_AMOUNT)
                         elif decision in ["BOOSTED_SHORT", "SHORT"]:
-                            place_short("BTCUSDT", 1000)
+                            place_short("BTCUSDT", TRADE_USD_AMOUNT)
             except Exception as e:
                 send_message(f"⚠️ WebSocket error: {e}")
                 await asyncio.sleep(5)
@@ -349,9 +358,9 @@ async def monitor_auto_signals():
             log_to_sheet("GPT_DECISION", "", "", "", "", "", f"AUTO {signal} → {decision}")
 
             if decision in ["LONG", "BOOSTED_LONG"]:
-                place_long("BTCUSDT", 1000)
+                place_long("BTCUSDT", TRADE_USD_AMOUNT)
             elif decision in ["SHORT", "BOOSTED_SHORT"]:
-                place_short("BTCUSDT", 1000)
+                place_short("BTCUSDT", TRADE_USD_AMOUNT)
 
         except Exception as e:
             send_message(f"❌ Auto signal error: {e}")
@@ -382,6 +391,31 @@ if __name__ == "__main__":
     # Запускаємо FastAPI
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 📈 Перевірка відкритої позиції
+def has_open_position(side):
+    try:
+        positions = binance_client.futures_position_information(symbol="BTCUSDT")
+        pos = next((p for p in positions if p["positionSide"] == side), None)
+        return pos and float(pos["positionAmt"]) != 0
+    except:
+        return False
 
 
 
