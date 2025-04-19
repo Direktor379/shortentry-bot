@@ -162,7 +162,7 @@ Open Interest: {oi:,.0f}
 
     try:
         res = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4-turbo",
             messages=[
                 {"role": "system", "content": "Ти трейдинг-аналітик. Відповідай лише одним зі слів: LONG, BOOSTED_LONG, SHORT, BOOSTED_SHORT, SKIP."},
                 {"role": "user", "content": prompt}
