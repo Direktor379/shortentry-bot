@@ -241,12 +241,7 @@ def ask_gpt_trade(type_, news, oi, delta, volume):
 
 
     recent_trades = get_last_trades()
-    mistakes = get_recent_mistakes()
     prompt = f"""
-Попередні помилки:
-{mistakes}
-
-""" + f"""
 GPT минулі сигнали:
 {recent_trades}
 
@@ -667,12 +662,7 @@ def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
     stats_summary = get_stats_summary()
     clusters = get_cluster_snapshot()
 
-    mistakes = get_recent_mistakes()
     prompt = f"""
-Попередні помилки:
-{mistakes}
-
-""" + f"""
 GPT минулі сигнали:
 {recent_trades}
 
@@ -732,12 +722,7 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
 
 def explain_trade_outcome(trade_type, result, pnl):
     try:
-        mistakes = get_recent_mistakes()
-    prompt = f"""
-Попередні помилки:
-{mistakes}
-
-""" + f"""
+        prompt = f"""
 Тип угоди: {trade_type}
 Результат: {result}
 PnL: {pnl}
@@ -796,19 +781,64 @@ def get_cluster_snapshot(limit=10):
 
 
 
-
-# 🧠 Памʼять GPT: витягнути останні пояснення втрат
+# 🧠 GPT Memory — останні помилки з Learning Log
 def get_recent_mistakes(limit=5):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
         gclient = gspread.authorize(creds)
         sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheet("Learning Log")
-        data = sheet.get_all_values()[1:]  # Пропустити заголовок
+        data = sheet.get_all_values()[1:]
         mistakes = [row for row in reversed(data) if row[2].strip().upper() == "LOSS" and row[4].strip()]
         return "\n".join(f"- {row[4]}" for row in mistakes[:limit])
     except:
         return ""
+
+
+
+def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
+    recent_trades, win_streak = get_recent_trades_and_streak()
+    stats_summary = get_stats_summary()
+    clusters = get_cluster_snapshot()
+    mistakes = get_recent_mistakes()
+
+    prompt = f"""
+GPT минулі сигнали:
+{recent_trades}
+
+Winrate по типах:
+{stats_summary}
+
+Серія перемог: {win_streak}/5
+
+Попередні помилки:
+{mistakes}
+
+Сигнал: {type_.upper()}
+Обʼєм: {volume}, Open Interest: {oi}, Зміна OI: {delta:.2f}%
+
+Останні новини:
+{news}
+
+Кластери останньої хвилини:
+{clusters}
+
+Ціль: досягти 5 win-підряд. Прийми зважене рішення. Вибери тільки одне: LONG / SHORT / BOOSTED_LONG / BOOSTED_SHORT / SKIP.
+"""
+    try:
+        res = client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {"role": "system", "content": "Ти скальп-аналітик. Вибери одне: LONG, SHORT, BOOSTED_LONG, BOOSTED_SHORT або SKIP."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return res.choices[0].message.content.strip()
+    except:
+        return "SKIP"
+
+
+
 
 
 
