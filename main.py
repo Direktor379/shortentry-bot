@@ -486,6 +486,7 @@ if __name__ == "__main__":
     def start_auto_signals():
         asyncio.run(monitor_auto_signals())
     # Запускаємо всі потоки одночасно
+    threading.Thread(target=start_cluster_ws).start()
     threading.Thread(target=start_ws).start()
     threading.Thread(target=start_closures).start()
     threading.Thread(target=start_trailing).start()
@@ -519,6 +520,7 @@ def has_open_position(side):
         return pos and float(pos["positionAmt"]) != 0
     except:
         return False
+
 
 
 
