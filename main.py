@@ -338,7 +338,10 @@ async def webhook(req: Request):
         volume = get_volume("BTCUSDT")
         decision = ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
         send_message(f"🤖 GPT вирішив: {decision}")
+        try:
         log_gpt_decision(signal, decision)
+    except Exception as e:
+        send_message(f"❌ GPT decision log error: {e}")
         log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
         if decision in ["LONG", "BOOSTED_LONG"]:
             place_long("BTCUSDT", TRADE_USD_AMOUNT)
@@ -378,7 +381,10 @@ async def monitor_agg_trades():
                         volume = get_volume("BTCUSDT")
                         decision = ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
                         send_message(f"🤖 GPT вирішив: {decision}")
+        try:
         log_gpt_decision(signal, decision)
+    except Exception as e:
+        send_message(f"❌ GPT decision log error: {e}")
                         log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
                         if decision in ["BOOSTED_LONG", "LONG"]:
                             place_long("BTCUSDT", TRADE_USD_AMOUNT)
