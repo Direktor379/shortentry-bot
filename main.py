@@ -35,6 +35,11 @@ binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
 client = OpenAI(api_key=OPENAI_API_KEY)
 last_open_interest = None
 
+# 📊 Для зведень
+gpt_decision_log = []
+skip_counter = 0
+
+
 # 📬 Telegram
 def send_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -337,6 +342,10 @@ async def webhook(req: Request):
         last_open_interest = oi
         volume = get_volume("BTCUSDT")
         decision = ask_gpt_trade(signal, news, oi, delta, volume)
+        print(f"[AUTO] Signal: {signal} → GPT: {decision}")
+        gpt_decision_log.append(decision)
+        global skip_counter
+        if decision == "SKIP": skip_counter += 1
         send_message(f"🤖 GPT вирішив: {decision}")
         log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
         if decision in ["LONG", "BOOSTED_LONG"]:
@@ -376,6 +385,10 @@ async def monitor_agg_trades():
                         delta = 0
                         volume = get_volume("BTCUSDT")
                         decision = ask_gpt_trade(signal, news, oi, delta, volume)
+        print(f"[AUTO] Signal: {signal} → GPT: {decision}")
+        gpt_decision_log.append(decision)
+        global skip_counter
+        if decision == "SKIP": skip_counter += 1
                         send_message(f"🤖 GPT вирішив: {decision}")
                         log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
                         if decision in ["BOOSTED_LONG", "LONG"]:
@@ -452,12 +465,16 @@ async def monitor_auto_signals():
                 continue
 
             decision = ask_gpt_trade(signal, news, oi, delta, volume)
+        print(f"[AUTO] Signal: {signal} → GPT: {decision}")
+        gpt_decision_log.append(decision)
+        global skip_counter
+        if decision == "SKIP": skip_counter += 1
 
             if decision == "SKIP":
                 await asyncio.sleep(60)
                 continue
 
-            send_message(f"🤖 GPT (автоаналіз): {decision}")
+            if decision != "SKIP": send_message(f"🤖 GPT (автоаналіз): {decision}")
             log_to_sheet("GPT_DECISION", "", "", "", "", "", f"AUTO {signal} → {decision}")
 
             if decision in ["LONG", "BOOSTED_LONG"]:
@@ -486,6 +503,7 @@ if __name__ == "__main__":
     def start_auto_signals():
         asyncio.run(monitor_auto_signals())
     # Запускаємо всі потоки одночасно
+    threading.Thread(target=lambda: asyncio.run(hourly_summary())).start()
     threading.Thread(target=start_ws).start()
     threading.Thread(target=start_closures).start()
     threading.Thread(target=start_trailing).start()
@@ -519,6 +537,7 @@ def has_open_position(side):
         return pos and float(pos["positionAmt"]) != 0
     except:
         return False
+
 
 
 
