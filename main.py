@@ -897,6 +897,98 @@ async def start_all():
     threading.Thread(target=lambda: asyncio.run(auto_daily_report())).start()
 
 
+# 📍 Перенесення стопу на Binance (MARKET STOP)
+def move_stop_to(symbol, side, new_stop_price):
+    try:
+        position_info = binance_client.futures_position_information(symbol=symbol)
+        pos = next((p for p in position_info if p["positionSide"] == side), None)
+        if not pos or float(pos["positionAmt"]) == 0:
+            return
+
+        direction = "SELL" if side == "LONG" else "BUY"
+
+        # Видалити існуючі STOP_MARKET ордери
+        open_orders = binance_client.futures_get_open_orders(symbol=symbol)
+        for order in open_orders:
+            if order["positionSide"] == side and order["type"] == "STOP_MARKET":
+                binance_client.futures_cancel_order(symbol=symbol, orderId=order["orderId"])
+
+        # Створити новий STOP_MARKET ордер
+        binance_client.futures_create_order(
+            symbol=symbol,
+            side=direction,
+            type="STOP_MARKET",
+            stopPrice=new_stop_price,
+            closePosition=True,
+            timeInForce="GTC",
+            positionSide=side
+        )
+    except Exception as e:
+        send_message(f"❌ move_stop_to помилка: {e}")
+
+
+
+# 🔁 GPT адаптивний трейлінг
+async def adaptive_trailing_monitor():
+    while True:
+        try:
+            positions = binance_client.futures_position_information(symbol="BTCUSDT")
+            for side in ["LONG", "SHORT"]:
+                pos = next((p for p in positions if p["positionSide"] == side), None)
+                if pos and float(pos["positionAmt"]) != 0:
+                    entry = float(pos["entryPrice"])
+                    mark = float(binance_client.futures_mark_price(symbol="BTCUSDT")["markPrice"])
+                    profit_pct = (mark - entry) / entry * 100 if side == "LONG" else (entry - mark) / entry * 100
+
+                    sorted_clusters = sorted(cluster_data.items(), key=lambda x: x[0], reverse=True)
+                    summary = "\n".join(
+                        f"{int(price)}$: BUY {data['buy']:.2f} | SELL {data['sell']:.2f}"
+                        for price, data in sorted_clusters
+                    )
+
+                    prompt = f"""
+Позиція: {side}
+Entry: {entry}
+Mark: {mark}
+Профіт: {profit_pct:.2f}%
+Кластери:
+{summary}
+
+Що зробити зі стопом?
+- MOVE_STOP_TO_XXXXX
+- KEEP_STOP
+- CLOSE_POSITION
+"""
+
+                    res = client.chat.completions.create(
+                        model="gpt-4-turbo",
+                        messages=[
+                            {"role": "system", "content": "Ти трейдинг-помічник. Вибери: MOVE_STOP_TO_XXXX, KEEP_STOP або CLOSE_POSITION."},
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+                    decision = res.choices[0].message.content.strip()
+                    if decision.startswith("MOVE_STOP_TO_"):
+                        try:
+                            new_price = float(decision.split("_")[-1])
+                            move_stop_to("BTCUSDT", side, new_price)
+                        except:
+                            send_message("❗ GPT повернув некоректну ціну STOP")
+                    elif decision == "CLOSE_POSITION":
+                        binance_client.futures_create_order(
+                            symbol="BTCUSDT",
+                            side="SELL" if side == "LONG" else "BUY",
+                            type="MARKET",
+                            quantity=abs(float(pos["positionAmt"])),
+                            positionSide=side
+                        )
+                        send_message(f"❌ Закрито позицію {side} по рішенню GPT")
+        except Exception as e:
+            send_message(f"❌ GPT трейлінг помилка: {e}")
+        await asyncio.sleep(60)
+
+
+
 
 
 
