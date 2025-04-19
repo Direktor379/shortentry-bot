@@ -291,16 +291,16 @@ def place_long(symbol, usd):
         tp = round(entry * 1.015, 2)
         sl = round(entry * 0.992, 2)
         if not DEBUG_MODE:
-        binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
+           binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
     else:
         send_message('🧪 DEBUG: Спроба відкриття ордера — пропущено')
         if not DEBUG_MODE:
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
+           binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
                                             stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
     else:
         send_message('🧪 DEBUG: Спроба відкриття ордера — пропущено')
         if not DEBUG_MODE:
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET',
+           binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET',
                                             stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
     else:
         send_message('🧪 DEBUG: Спроба відкриття ордера — пропущено')
