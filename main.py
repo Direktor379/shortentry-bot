@@ -342,15 +342,15 @@ async def webhook(req: Request):
         last_open_interest = oi
         volume = get_volume("BTCUSDT")
         
-        decision = ask_gpt_trade(signal, news, oi, delta, volume)
-        try:
-            print(f"[AUTO] Signal: {signal} → GPT: {decision}")
-        except Exception as e:
-            print(f"[AUTO] print error: {e}")
-        gpt_decision_log.append(decision)
-        global skip_counter
-        if decision == "SKIP":
-            skip_counter += 1
+try:
+    decision = ask_gpt_trade(signal, news, oi, delta, volume)
+    print(f"[AUTO] Signal: {signal} → GPT: {decision}")
+except Exception as e:
+    print(f"[AUTO ERROR]: {e}")
+gpt_decision_log.append(decision)
+global skip_counter
+if decision == "SKIP":
+    skip_counter += 1
 
         send_message(f"🤖 GPT вирішив: {decision}")
         log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
@@ -391,15 +391,15 @@ async def monitor_agg_trades():
                         delta = 0
                         volume = get_volume("BTCUSDT")
                         
-        decision = ask_gpt_trade(signal, news, oi, delta, volume)
-        try:
-            print(f"[AUTO] Signal: {signal} → GPT: {decision}")
-        except Exception as e:
-            print(f"[AUTO] print error: {e}")
-        gpt_decision_log.append(decision)
-        global skip_counter
-        if decision == "SKIP":
-            skip_counter += 1
+try:
+    decision = ask_gpt_trade(signal, news, oi, delta, volume)
+    print(f"[AUTO] Signal: {signal} → GPT: {decision}")
+except Exception as e:
+    print(f"[AUTO ERROR]: {e}")
+gpt_decision_log.append(decision)
+global skip_counter
+if decision == "SKIP":
+    skip_counter += 1
 
                         send_message(f"🤖 GPT вирішив: {decision}")
                         log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
@@ -477,15 +477,15 @@ async def monitor_auto_signals():
                 continue
 
             
-        decision = ask_gpt_trade(signal, news, oi, delta, volume)
-        try:
-            print(f"[AUTO] Signal: {signal} → GPT: {decision}")
-        except Exception as e:
-            print(f"[AUTO] print error: {e}")
-        gpt_decision_log.append(decision)
-        global skip_counter
-        if decision == "SKIP":
-            skip_counter += 1
+try:
+    decision = ask_gpt_trade(signal, news, oi, delta, volume)
+    print(f"[AUTO] Signal: {signal} → GPT: {decision}")
+except Exception as e:
+    print(f"[AUTO ERROR]: {e}")
+gpt_decision_log.append(decision)
+global skip_counter
+if decision == "SKIP":
+    skip_counter += 1
 
 
             if decision == "SKIP":
@@ -555,90 +555,6 @@ def has_open_position(side):
         return pos and float(pos["positionAmt"]) != 0
     except:
         return False
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-
-
-
-
-# ⏱ Щогодинне зведення
-async def hourly_summary():
-    global gpt_decision_log, skip_counter
-    while True:
-        await asyncio.sleep(3600)
-        total = len(gpt_decision_log)
-        skips = skip_counter
-        non_skips = total - skips
-        last = next((d for d in reversed(gpt_decision_log) if d != "SKIP"), "Немає")
-        send_message(f"🕒 Звіт за годину:\n📊 Всього рішень: {total}\n✅ Угод: {non_skips}\n❌ SKIP: {skips}\nОстанній активний: {last}")
-        gpt_decision_log = []
-        skip_counter = 0
 
 
 
