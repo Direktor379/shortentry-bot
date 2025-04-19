@@ -42,7 +42,7 @@ def send_message(text: str):
     data = {"chat_id": CHAT_ID, "text": text}
 try:
         requests.post(url, data=data)
-    except Exception as e:
+except Exception as e:
         print(f"Telegram error: {e}")
 
 # 📊 Google Sheets
@@ -56,7 +56,7 @@ try:
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         row = [now, type_, entry, tp, sl, qty, result or "", comment]
         sheet.append_row(row)
-    except Exception as e:
+except Exception as e:
         send_message(f"❌ Sheets error: {e}")
 
 def update_result_in_sheet(type_, result, pnl=None):
@@ -72,7 +72,7 @@ try:
                 if pnl is not None:
                     sheet.update_cell(i + 1, 8, f"{pnl} USDT")
                 break
-    except Exception as e:
+except Exception as e:
         send_message(f"❌ Update result error: {e}")
 # 📈 Ринок
 
@@ -82,21 +82,21 @@ try:
         r = requests.get(url)
         news = r.json()
         return "\n".join([item["title"] for item in news.get("results", [])[:3]])
-    except:
+except:
         return "⚠️ Новини не вдалося завантажити."
 
 def get_open_interest(symbol="BTCUSDT"):
 try:
         r = requests.get("https://fapi.binance.com/fapi/v1/openInterest", params={"symbol": symbol})
         return float(r.json()["openInterest"]) if r.ok else None
-    except:
+except:
         return None
 
 def get_volume(symbol="BTCUSDT"):
 try:
         data = binance_client.futures_klines(symbol=symbol, interval="1m", limit=1)
         return float(data[-1][7])
-    except:
+except:
         return None
 
 def get_quantity(symbol: str, usd: float):
@@ -108,7 +108,7 @@ try:
                 step = float(next(f["stepSize"] for f in s["filters"] if f["filterType"] == "LOT_SIZE"))
                 qty = usd / price
                 return round(qty - (qty % step), 8)
-    except Exception as e:
+except Exception as e:
         send_message(f"❌ Quantity error: {e}")
         return None
 
@@ -128,7 +128,7 @@ try:
             total_price_volume += typical_price * volume
         vwap = total_price_volume / total_volume if total_volume > 0 else None
         return vwap
-    except Exception as e:
+except Exception as e:
         send_message(f"❌ VWAP error: {e}")
         return None
 
@@ -140,7 +140,7 @@ try:
         if not vwap:
             return False
         return abs(price - vwap) / price < 0.005
-    except:
+except:
         return False
 
 
@@ -157,7 +157,7 @@ try:
         recent = gpt_logs[:limit]
         result = [f"{i+1}. {row[1]} → {row[6]}" for i, row in enumerate(recent)]
         return "\n".join(result)
-    except:
+except:
         return ""
 
 def update_stats_sheet():
@@ -191,12 +191,12 @@ try:
 try:
             stat_sheet = sh.worksheet("Stats")
             stat_sheet.clear()
-        except:
+except:
             stat_sheet = sh.add_worksheet(title="Stats", rows="20", cols="5")
 
         stat_sheet.update("A1", stat_rows)
 
-    except Exception as e:
+except Exception as e:
         send_message(f"❌ Stats error: {e}")
 
 # 🤖 GPT
@@ -214,7 +214,7 @@ try:
         recent = gpt_logs[:limit]
         result = [f"{i+1}. {row[1]} → {row[6]}" for i, row in enumerate(recent)]
         return "\n".join(result)
-    except:
+except:
         return ""
 
 def get_stats_summary():
@@ -229,7 +229,7 @@ try:
             if len(row) >= 5:
                 lines.append(f"{row[0]}: {row[4]}%")
         return "\n".join(lines)
-    except:
+except:
         return "Статистика недоступна."
 
 def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
@@ -274,7 +274,7 @@ try:
             ]
         )
         return res.choices[0].message.content.strip()
-    except:
+except:
         return "SKIP"
 # 📈 Торгівля
 
@@ -364,7 +364,7 @@ try:
         elif decision in ["SHORT", "BOOSTED_SHORT"]:
             place_short("BTCUSDT", TRADE_USD_AMOUNT)
         return {"ok": True}
-    except Exception as e:
+except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
 # 🐋 Whale Detector
@@ -403,7 +403,7 @@ try:
                             place_long("BTCUSDT", TRADE_USD_AMOUNT)
                         elif decision in ["BOOSTED_SHORT", "SHORT"]:
                             place_short("BTCUSDT", TRADE_USD_AMOUNT)
-            except Exception as e:
+except Exception as e:
                 send_message(f"⚠️ WebSocket error: {e}")
                 await asyncio.sleep(5)
 
@@ -422,7 +422,7 @@ try:
                         pnl = round((mark - entry) * 1000, 2) if side == "LONG" else round((entry - mark) * 1000, 2)
                         result = "WIN" if pnl > 0 else "LOSS"
                         update_result_in_sheet(side, result, f"{pnl:+.2f}")
-            except Exception:
+except Exception:
                 pass
         await asyncio.sleep(60)
 
@@ -448,7 +448,7 @@ try:
                         new_stop = round(entry * (1 + (profit_pct - 1) / 100), 2) if side == "LONG" else round(entry * (1 - (profit_pct - 1) / 100), 2)
                         trailing_stops[side] = new_stop
                         send_message(f"🔁 {side}: Новий трейлінг-стоп {new_stop}")
-        except:
+except:
             pass
         await asyncio.sleep(15)
 # 🤖 Автоаналіз щохвилини
@@ -486,7 +486,7 @@ try:
             elif decision in ["SHORT", "BOOSTED_SHORT"]:
                 place_short("BTCUSDT", TRADE_USD_AMOUNT)
 
-        except Exception as e:
+except Exception as e:
             send_message(f"❌ Auto signal error: {e}")
         await asyncio.sleep(60)
 
@@ -538,10 +538,8 @@ try:
         positions = binance_client.futures_position_information(symbol="BTCUSDT")
         pos = next((p for p in positions if p["positionSide"] == side), None)
         return pos and float(pos["positionAmt"]) != 0
-    except:
+except:
         return False
-
-
 
 
 
