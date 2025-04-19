@@ -928,7 +928,8 @@ def move_stop_to(symbol, side, new_stop_price):
 
 
 
-# 🔁 GPT адаптивний трейлінг
+
+# 🔁 GPT адаптивний трейлінг з керуванням STOP і TP
 async def adaptive_trailing_monitor():
     while True:
         try:
@@ -941,7 +942,8 @@ async def adaptive_trailing_monitor():
                     profit_pct = (mark - entry) / entry * 100 if side == "LONG" else (entry - mark) / entry * 100
 
                     sorted_clusters = sorted(cluster_data.items(), key=lambda x: x[0], reverse=True)
-                    summary = "\n".join(
+                    summary = "
+".join(
                         f"{int(price)}$: BUY {data['buy']:.2f} | SELL {data['sell']:.2f}"
                         for price, data in sorted_clusters
                     )
@@ -958,23 +960,33 @@ Mark: {mark}
 - MOVE_STOP_TO_XXXXX
 - KEEP_STOP
 - CLOSE_POSITION
+
+Що зробити з тейком?
+- NEW_TP_TO_YYYYY
+- REMOVE_TP
+- KEEP_TP
 """
 
                     res = client.chat.completions.create(
                         model="gpt-4-turbo",
                         messages=[
-                            {"role": "system", "content": "Ти трейдинг-помічник. Вибери: MOVE_STOP_TO_XXXX, KEEP_STOP або CLOSE_POSITION."},
+                            {"role": "system", "content": "Ти помічник трейдера. Відповідай двома рядками: спочатку STOP (MOVE_STOP_TO_X або KEEP_STOP або CLOSE_POSITION), потім TP (NEW_TP_TO_X або REMOVE_TP або KEEP_TP)."},
                             {"role": "user", "content": prompt}
                         ]
                     )
-                    decision = res.choices[0].message.content.strip()
-                    if decision.startswith("MOVE_STOP_TO_"):
+
+                    lines = res.choices[0].message.content.strip().splitlines()
+                    stop_decision = lines[0].strip()
+                    tp_decision = lines[1].strip()
+
+                    # Обробка STOP
+                    if stop_decision.startswith("MOVE_STOP_TO_"):
                         try:
-                            new_price = float(decision.split("_")[-1])
+                            new_price = float(stop_decision.split("_")[-1])
                             move_stop_to("BTCUSDT", side, new_price)
                         except:
-                            send_message("❗ GPT повернув некоректну ціну STOP")
-                    elif decision == "CLOSE_POSITION":
+                            send_message("❗ GPT STOP: некоректна ціна")
+                    elif stop_decision == "CLOSE_POSITION":
                         binance_client.futures_create_order(
                             symbol="BTCUSDT",
                             side="SELL" if side == "LONG" else "BUY",
@@ -982,9 +994,35 @@ Mark: {mark}
                             quantity=abs(float(pos["positionAmt"])),
                             positionSide=side
                         )
-                        send_message(f"❌ Закрито позицію {side} по рішенню GPT")
+                        send_message(f"❌ GPT закрив позицію {side}")
+
+                    # Обробка TP
+                    open_orders = binance_client.futures_get_open_orders(symbol="BTCUSDT")
+                    current_tp = next((o for o in open_orders if o["positionSide"] == side and o["type"] == "TAKE_PROFIT_MARKET"), None)
+
+                    if tp_decision == "REMOVE_TP" and current_tp:
+                        binance_client.futures_cancel_order(symbol="BTCUSDT", orderId=current_tp["orderId"])
+                        send_message(f"🗑 TP видалено ({side})")
+
+                    elif tp_decision.startswith("NEW_TP_TO_"):
+                        try:
+                            new_tp = float(tp_decision.split("_")[-1])
+                            if current_tp:
+                                binance_client.futures_cancel_order(symbol="BTCUSDT", orderId=current_tp["orderId"])
+                            binance_client.futures_create_order(
+                                symbol="BTCUSDT",
+                                side="SELL" if side == "LONG" else "BUY",
+                                type="TAKE_PROFIT_MARKET",
+                                stopPrice=new_tp,
+                                closePosition=True,
+                                timeInForce="GTC",
+                                positionSide=side
+                            )
+                            send_message(f"🎯 Новий TP встановлено ({side}): {new_tp}")
+                        except:
+                            send_message("❗ GPT TP: некоректна ціна")
         except Exception as e:
-            send_message(f"❌ GPT трейлінг помилка: {e}")
+            send_message(f"❌ GPT трейлінг+TP помилка: {e}")
         await asyncio.sleep(60)
 
 
