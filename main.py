@@ -248,9 +248,8 @@ GPT минулі сигнали:
 Winrate по типах:
 {stats_summary}
 
-\nGPT минулі сигнали:\n{recent_trades}\n\n
 Останні новини:
-{news}
+{news}"""
 
 Open Interest: {oi:,.0f}
 Зміна OI: {delta:.2f}%
@@ -1024,6 +1023,7 @@ Mark: {mark}
         except Exception as e:
             send_message(f"❌ GPT трейлінг+TP помилка: {e}")
         await asyncio.sleep(60)
+
 
 
 
