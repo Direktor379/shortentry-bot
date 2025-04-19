@@ -146,7 +146,7 @@ def ask_gpt_trade(type_, news, oi, delta, volume):
     if is_flat_zone("BTCUSDT"):
         return "SKIP"
 
-    prompt = f\"\"\"
+    prompt = f"""
 Останні новини:
 {news}
 
@@ -158,7 +158,7 @@ Open Interest: {oi:,.0f}
 
 Чи підтверджуєш цей сигнал?
 - LONG / BOOSTED_LONG / SHORT / BOOSTED_SHORT / SKIP
-\"\"\"
+"""
 
     try:
         res = client.chat.completions.create(
