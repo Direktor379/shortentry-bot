@@ -35,7 +35,7 @@ binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
 client = OpenAI(api_key=OPENAI_API_KEY)
 last_open_interest = None
 
-# 📊 Лог для зведень
+# 📊 GPT лог і зведення
 gpt_decision_log = []
 skip_counter = 0
 
@@ -344,10 +344,11 @@ async def webhook(req: Request):
         
         try:
             decision = ask_gpt_trade(signal, news, oi, delta, volume)
-            print(f"[AUTO] Signal: {signal} → GPT: {decision}")
         except Exception as e:
-            print(f"[AUTO ERROR]: {e}")
+            print(f"[AUTO ERROR] GPT decision failed: {e}")
             decision = "SKIP"
+
+        print(f"[AUTO] Signal: {signal} → GPT: {decision}")
         gpt_decision_log.append(decision)
         global skip_counter
         if decision == "SKIP":
@@ -394,10 +395,11 @@ async def monitor_agg_trades():
                         
         try:
             decision = ask_gpt_trade(signal, news, oi, delta, volume)
-            print(f"[AUTO] Signal: {signal} → GPT: {decision}")
         except Exception as e:
-            print(f"[AUTO ERROR]: {e}")
+            print(f"[AUTO ERROR] GPT decision failed: {e}")
             decision = "SKIP"
+
+        print(f"[AUTO] Signal: {signal} → GPT: {decision}")
         gpt_decision_log.append(decision)
         global skip_counter
         if decision == "SKIP":
@@ -481,10 +483,11 @@ async def monitor_auto_signals():
             
         try:
             decision = ask_gpt_trade(signal, news, oi, delta, volume)
-            print(f"[AUTO] Signal: {signal} → GPT: {decision}")
         except Exception as e:
-            print(f"[AUTO ERROR]: {e}")
+            print(f"[AUTO ERROR] GPT decision failed: {e}")
             decision = "SKIP"
+
+        print(f"[AUTO] Signal: {signal} → GPT: {decision}")
         gpt_decision_log.append(decision)
         global skip_counter
         if decision == "SKIP":
@@ -558,6 +561,7 @@ def has_open_position(side):
         return pos and float(pos["positionAmt"]) != 0
     except:
         return False
+
 
 
 
