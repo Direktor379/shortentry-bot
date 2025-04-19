@@ -283,6 +283,8 @@ def place_long(symbol, usd):
         send_message("⚠️ Уже відкрита LONG позиція")
         return
     try:
+except:
+    pass
         entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
         qty = get_quantity(symbol, usd)
         if not qty:
@@ -312,6 +314,8 @@ def place_short(symbol, usd):
         send_message("⚠️ Уже відкрита SHORT позиція")
         return
     try:
+except:
+    pass
         entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
         qty = get_quantity(symbol, usd)
         if not qty:
@@ -534,6 +538,7 @@ def has_open_position(side):
         return pos and float(pos["positionAmt"]) != 0
     except:
         return False
+
 
 
 
