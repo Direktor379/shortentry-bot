@@ -241,7 +241,11 @@ def ask_gpt_trade(type_, news, oi, delta, volume):
 
 
     recent_trades = get_last_trades()
+    mistakes = get_recent_mistakes()
     prompt = f"""
+Попередні помилки:
+{mistakes}
+""" + f"""
 GPT минулі сигнали:
 {recent_trades}
 
@@ -662,7 +666,11 @@ def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
     stats_summary = get_stats_summary()
     clusters = get_cluster_snapshot()
 
+    mistakes = get_recent_mistakes()
     prompt = f"""
+Попередні помилки:
+{mistakes}
+""" + f"""
 GPT минулі сигнали:
 {recent_trades}
 
@@ -722,7 +730,11 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
 
 def explain_trade_outcome(trade_type, result, pnl):
     try:
-        prompt = f"""
+        mistakes = get_recent_mistakes()
+    prompt = f"""
+Попередні помилки:
+{mistakes}
+""" + f"""
 Тип угоди: {trade_type}
 Результат: {result}
 PnL: {pnl}
@@ -778,5 +790,22 @@ def get_cluster_snapshot(limit=10):
         )
     except:
         return ""
+
+
+
+
+# 🧠 Памʼять GPT: витягнути останні пояснення втрат
+def get_recent_mistakes(limit=5):
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
+        gclient = gspread.authorize(creds)
+        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheet("Learning Log")
+        data = sheet.get_all_values()[1:]  # Пропустити заголовок
+        mistakes = [row for row in reversed(data) if row[2].strip().upper() == "LOSS" and row[4].strip()]
+        return "\n".join(f"- {row[4]}" for row in mistakes[:limit])
+    except:
+        return ""
+
 
 
