@@ -142,6 +142,62 @@ def is_flat_zone(symbol="BTCUSDT"):
     except:
         return False
 
+
+def get_last_trades(limit=10):
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
+        gclient = gspread.authorize(creds)
+        sh = gclient.open_by_key(GOOGLE_SHEET_ID)
+        sheet = sh.worksheets()[0]
+        data = sheet.get_all_values()[1:]  # без заголовка
+        data.reverse()
+        gpt_logs = [row for row in data if row[1] in ["LONG", "SHORT", "BOOSTED_LONG", "BOOSTED_SHORT"] and row[6]]
+        recent = gpt_logs[:limit]
+        result = [f"{i+1}. {row[1]} → {row[6]}" for i, row in enumerate(recent)]
+        return "\n".join(result)
+    except:
+        return ""
+
+def update_stats_sheet():
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
+        gclient = gspread.authorize(creds)
+        sh = gclient.open_by_key(GOOGLE_SHEET_ID)
+
+        data = sh.worksheets()[0].get_all_values()
+        header = data[0]
+        rows = data[1:]
+
+        stats = {}
+        for row in rows:
+            gpt_type = row[1]
+            result = row[6].strip().upper()
+            if gpt_type not in stats:
+                stats[gpt_type] = {"WIN": 0, "LOSS": 0}
+            if result == "WIN":
+                stats[gpt_type]["WIN"] += 1
+            elif result == "LOSS":
+                stats[gpt_type]["LOSS"] += 1
+
+        stat_rows = [["Type", "WIN", "LOSS", "Total", "Winrate %"]]
+        for k, v in stats.items():
+            total = v["WIN"] + v["LOSS"]
+            winrate = round(v["WIN"] / total * 100, 2) if total > 0 else 0
+            stat_rows.append([k, v["WIN"], v["LOSS"], total, winrate])
+
+        try:
+            stat_sheet = sh.worksheet("Stats")
+            stat_sheet.clear()
+        except:
+            stat_sheet = sh.add_worksheet(title="Stats", rows="20", cols="5")
+
+        stat_sheet.update("A1", stat_rows)
+
+    except Exception as e:
+        send_message(f"❌ Stats error: {e}")
+
 # 🤖 GPT
 def ask_gpt_trade(type_, news, oi, delta, volume):
     
@@ -150,7 +206,8 @@ def ask_gpt_trade(type_, news, oi, delta, volume):
         return "SKIP"
 
 
-    prompt = f"""
+    recent_trades = get_last_trades()
+    prompt = f"""\nGPT минулі сигнали:\n{recent_trades}\n\n
 Останні новини:
 {news}
 
@@ -198,6 +255,7 @@ def place_long(symbol, usd):
                                             stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
         send_message(f"🟢 LONG OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
         log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
+        update_stats_sheet()
     except Exception as e:
         send_message(f"❌ Binance LONG error: {e}")
 
@@ -220,6 +278,7 @@ def place_short(symbol, usd):
                                             stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
         send_message(f"🔴 SHORT OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
         log_to_sheet("SHORT", entry, tp, sl, qty, None, "GPT сигнал")
+        update_stats_sheet()
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
 
