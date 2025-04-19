@@ -291,22 +291,22 @@ except:
             send_message("❌ Обсяг не визначено.")
             return
         tp = round(entry * 1.015, 2)
-        sl = round(entry * 0.992, 2)
-        binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
-    else:
-        send_message('🧪 DEBUG: Спроба відкриття ордера — пропущено')
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
-                                            stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
-    else:
-        send_message('🧪 DEBUG: Спроба відкриття ордера — пропущено')
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET',
-                                            stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
-    else:
-        send_message('🧪 DEBUG: Спроба відкриття ордера — пропущено')
-        send_message(f"🟢 LONG OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
-        log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
-        update_stats_sheet()
-    except Exception as e:
+sl = round(entry * 0.992, 2)
+
+if not DEBUG_MODE:
+    binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
+    binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
+                                        stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
+    binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET',
+                                        stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
+else:
+    send_message("🟢 DEBUG: відкрив би LONG")
+    send_message(f"📦 Qty: {qty} 🎯 TP: {tp} 🛡 SL: {sl}")
+
+log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
+update_stats_sheet()
+   
+   except Exception as e:
         send_message(f"❌ Binance LONG error: {e}")
 
 def place_short(symbol, usd):
