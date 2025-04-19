@@ -40,7 +40,10 @@ last_open_interest = None
 def send_message(text: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": text}
-try:
+ try:
+     pass
+ except:
+     pass
         requests.post(url, data=data)
 except Exception as e:
         print(f"Telegram error: {e}")
@@ -48,7 +51,10 @@ except Exception as e:
 # 📊 Google Sheets
 def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
         gclient = gspread.authorize(creds)
@@ -62,7 +68,10 @@ except Exception as e:
 
 def update_result_in_sheet(type_, result, pnl=None):
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
         gclient = gspread.authorize(creds)
@@ -80,7 +89,10 @@ except Exception as e:
 
 def get_latest_news():
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
         r = requests.get(url)
         news = r.json()
@@ -90,7 +102,10 @@ except:
 
 def get_open_interest(symbol="BTCUSDT"):
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         r = requests.get("https://fapi.binance.com/fapi/v1/openInterest", params={"symbol": symbol})
         return float(r.json()["openInterest"]) if r.ok else None
 except:
@@ -98,7 +113,10 @@ except:
 
 def get_volume(symbol="BTCUSDT"):
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         data = binance_client.futures_klines(symbol=symbol, interval="1m", limit=1)
         return float(data[-1][7])
 except:
@@ -106,7 +124,10 @@ except:
 
 def get_quantity(symbol: str, usd: float):
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         info = binance_client.futures_exchange_info()
         price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
         for s in info["symbols"]:
@@ -121,7 +142,10 @@ except Exception as e:
 # 📏 VWAP обрахунок
 def calculate_vwap(symbol="BTCUSDT", interval="1m", limit=10):
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         candles = binance_client.futures_klines(symbol=symbol, interval=interval, limit=limit)
         total_volume = 0
         total_price_volume = 0
@@ -142,7 +166,10 @@ except Exception as e:
 # 📉 Флет-фільтр
 def is_flat_zone(symbol="BTCUSDT"):
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
         vwap = calculate_vwap(symbol)
         if not vwap:
@@ -154,7 +181,10 @@ except:
 
 def get_last_trades(limit=10):
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
         gclient = gspread.authorize(creds)
@@ -171,7 +201,10 @@ except:
 
 def update_stats_sheet():
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
         gclient = gspread.authorize(creds)
@@ -198,7 +231,10 @@ try:
             winrate = round(v["WIN"] / total * 100, 2) if total > 0 else 0
             stat_rows.append([k, v["WIN"], v["LOSS"], total, winrate])
 
-try:
+ try:
+     pass
+ except:
+     pass
             stat_sheet = sh.worksheet("Stats")
             stat_sheet.clear()
 except:
@@ -213,7 +249,10 @@ except Exception as e:
 
 def get_last_trades(limit=10):
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
         gclient = gspread.authorize(creds)
@@ -230,7 +269,10 @@ except:
 
 def get_stats_summary():
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
         gclient = gspread.authorize(creds)
@@ -277,7 +319,10 @@ Open Interest: {oi:,.0f}
 - LONG / BOOSTED_LONG / SHORT / BOOSTED_SHORT / SKIP
 """
 
-try:
+ try:
+     pass
+ except:
+     pass
         res = client.chat.completions.create(
             model="gpt-4-turbo",
             messages=[
@@ -294,8 +339,10 @@ def place_long(symbol, usd):
     if has_open_position("LONG"):
         send_message("⚠️ Уже відкрита LONG позиція")
         return
-try:
-    pass
+ try:
+     pass
+ except:
+     pass
 except:
     pass
         entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
@@ -326,8 +373,10 @@ def place_short(symbol, usd):
     if has_open_position("SHORT"):
         send_message("⚠️ Уже відкрита SHORT позиція")
         return
-try:
-    pass
+ try:
+     pass
+ except:
+     pass
 except:
     pass
         entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
@@ -358,7 +407,10 @@ except:
 @app.post("/webhook")
 async def webhook(req: Request):
     global last_open_interest
-try:
+ try:
+     pass
+ except:
+     pass
         data = await req.json()
         signal = data.get("message", "").strip().upper()
         send_message(f"📩 Отримано сигнал: {signal}")
@@ -386,7 +438,10 @@ async def monitor_agg_trades():
     uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
     async with websockets.connect(uri) as websocket:
         while True:
-try:
+ try:
+     pass
+ except:
+     pass
                 msg = json.loads(await websocket.recv())
                 price = float(msg['p'])
                 qty = float(msg['q'])
@@ -423,7 +478,10 @@ except Exception as e:
 async def monitor_closures():
     while True:
         for side in ["LONG", "SHORT"]:
-try:
+ try:
+     pass
+ except:
+     pass
                 positions = binance_client.futures_position_information(symbol="BTCUSDT")
                 pos = next((p for p in positions if p["positionSide"] == side), None)
                 if pos:
@@ -443,7 +501,10 @@ trailing_stops = {"LONG": None, "SHORT": None}
 
 async def monitor_trailing_stops():
     while True:
-try:
+ try:
+     pass
+ except:
+     pass
             for side in ["LONG", "SHORT"]:
                 pos = next((p for p in binance_client.futures_position_information(symbol="BTCUSDT")
                             if p["positionSide"] == side), None)
@@ -467,7 +528,10 @@ except:
 async def monitor_auto_signals():
     global last_open_interest
     while True:
-try:
+ try:
+     pass
+ except:
+     pass
             news = get_latest_news()
             oi = get_open_interest("BTCUSDT")
             volume = get_volume("BTCUSDT")
@@ -547,7 +611,10 @@ if __name__ == "__main__":
 # 📈 Перевірка відкритої позиції
 def has_open_position(side):
     pass
-try:
+ try:
+     pass
+ except:
+     pass
         positions = binance_client.futures_position_information(symbol="BTCUSDT")
         pos = next((p for p in positions if p["positionSide"] == side), None)
         return pos and float(pos["positionAmt"]) != 0
