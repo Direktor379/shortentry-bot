@@ -534,3 +534,4 @@ def has_open_position(side):
 
 
 
+
