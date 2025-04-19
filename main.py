@@ -235,7 +235,7 @@ def get_stats_summary():
 def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
     recent_trades = get_last_trades()
     stats_summary = get_stats_summary()
-    
+
     # 🧠 Адаптивний флет-фільтр: блокує тільки якщо немає BOOSTED і обʼєм малий
     if is_flat_zone("BTCUSDT") and "BOOSTED" not in type_ and volume < 300:
         return "SKIP"
