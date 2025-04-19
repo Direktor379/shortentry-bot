@@ -1051,7 +1051,7 @@ symbol="BTCUSDT",
 side="SELL" if side == "LONG" else "BUY",
 type="MARKET",
 quantity=abs(float(pos["positionAmt"]))
-send_message('🧪 DEBUG: Спроба відкриття ордера — пропущено')),
+send_message('🧪 DEBUG: Спроба відкриття ордера — пропущено')
 positionSide=side
 )
 send_message(f"❌ Закрили позицію {side} по рішенню GPT")
@@ -1073,4 +1073,3 @@ now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 row = [now, "GPT_DECISION", "", "", "", "", "", f"{raw_signal} → {gpt_decision}"]
 sheet.append_row(row)
 pass
-
