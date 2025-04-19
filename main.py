@@ -47,6 +47,7 @@ except Exception as e:
 
 # 📊 Google Sheets
 def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
+    pass
 try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
@@ -60,6 +61,7 @@ except Exception as e:
         send_message(f"❌ Sheets error: {e}")
 
 def update_result_in_sheet(type_, result, pnl=None):
+    pass
 try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
@@ -77,6 +79,7 @@ except Exception as e:
 # 📈 Ринок
 
 def get_latest_news():
+    pass
 try:
         url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
         r = requests.get(url)
@@ -86,6 +89,7 @@ except:
         return "⚠️ Новини не вдалося завантажити."
 
 def get_open_interest(symbol="BTCUSDT"):
+    pass
 try:
         r = requests.get("https://fapi.binance.com/fapi/v1/openInterest", params={"symbol": symbol})
         return float(r.json()["openInterest"]) if r.ok else None
@@ -93,6 +97,7 @@ except:
         return None
 
 def get_volume(symbol="BTCUSDT"):
+    pass
 try:
         data = binance_client.futures_klines(symbol=symbol, interval="1m", limit=1)
         return float(data[-1][7])
@@ -100,6 +105,7 @@ except:
         return None
 
 def get_quantity(symbol: str, usd: float):
+    pass
 try:
         info = binance_client.futures_exchange_info()
         price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
@@ -114,6 +120,7 @@ except Exception as e:
 
 # 📏 VWAP обрахунок
 def calculate_vwap(symbol="BTCUSDT", interval="1m", limit=10):
+    pass
 try:
         candles = binance_client.futures_klines(symbol=symbol, interval=interval, limit=limit)
         total_volume = 0
@@ -134,6 +141,7 @@ except Exception as e:
 
 # 📉 Флет-фільтр
 def is_flat_zone(symbol="BTCUSDT"):
+    pass
 try:
         price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
         vwap = calculate_vwap(symbol)
@@ -145,6 +153,7 @@ except:
 
 
 def get_last_trades(limit=10):
+    pass
 try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
@@ -161,6 +170,7 @@ except:
         return ""
 
 def update_stats_sheet():
+    pass
 try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
@@ -202,6 +212,7 @@ except Exception as e:
 # 🤖 GPT
 
 def get_last_trades(limit=10):
+    pass
 try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
@@ -218,6 +229,7 @@ except:
         return ""
 
 def get_stats_summary():
+    pass
 try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
@@ -534,6 +546,7 @@ if __name__ == "__main__":
 
 # 📈 Перевірка відкритої позиції
 def has_open_position(side):
+    pass
 try:
         positions = binance_client.futures_position_information(symbol="BTCUSDT")
         pos = next((p for p in positions if p["positionSide"] == side), None)
