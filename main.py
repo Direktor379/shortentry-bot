@@ -22,7 +22,6 @@ async def healthcheck():
         return {"status": "running"}
     except:
         return {"status": "error"}
-
 # 🔐 ENV
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -46,7 +45,6 @@ def send_message(text: str):
         requests.post(url, data=data)
     except Exception as e:
         print(f"Telegram error: {e}")
-
 # 📊 Google Sheets
 def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
     try:
@@ -144,63 +142,6 @@ def is_flat_zone(symbol="BTCUSDT"):
         return abs(price - vwap) / price < 0.005
     except:
         return False
-
-
-def get_last_trades(limit=10):
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
-        gclient = gspread.authorize(creds)
-        sh = gclient.open_by_key(GOOGLE_SHEET_ID)
-        sheet = sh.worksheets()[0]
-        data = sheet.get_all_values()[1:]  # без заголовка
-        data.reverse()
-        gpt_logs = [row for row in data if row[1] in ["LONG", "SHORT", "BOOSTED_LONG", "BOOSTED_SHORT"] and row[6]]
-        recent = gpt_logs[:limit]
-        result = [f"{i+1}. {row[1]} → {row[6]}" for i, row in enumerate(recent)]
-        return "\n".join(result)
-    except:
-        return ""
-
-def update_stats_sheet():
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
-        gclient = gspread.authorize(creds)
-        sh = gclient.open_by_key(GOOGLE_SHEET_ID)
-
-        data = sh.worksheets()[0].get_all_values()
-        header = data[0]
-        rows = data[1:]
-
-        stats = {}
-        for row in rows:
-            gpt_type = row[1]
-            result = row[6].strip().upper()
-            if gpt_type not in stats:
-                stats[gpt_type] = {"WIN": 0, "LOSS": 0}
-            if result == "WIN":
-                stats[gpt_type]["WIN"] += 1
-            elif result == "LOSS":
-                stats[gpt_type]["LOSS"] += 1
-
-        stat_rows = [["Type", "WIN", "LOSS", "Total", "Winrate %"]]
-        for k, v in stats.items():
-            total = v["WIN"] + v["LOSS"]
-            winrate = round(v["WIN"] / total * 100, 2) if total > 0 else 0
-            stat_rows.append([k, v["WIN"], v["LOSS"], total, winrate])
-
-        try:
-            stat_sheet = sh.worksheet("Stats")
-            stat_sheet.clear()
-        except:
-            stat_sheet = sh.add_worksheet(title="Stats", rows="20", cols="5")
-
-        stat_sheet.update("A1", stat_rows)
-
-    except Exception as e:
-        send_message(f"❌ Stats error: {e}")
-
 # 🤖 GPT
 
 def get_last_trades(limit=10):
@@ -234,16 +175,14 @@ def get_stats_summary():
     except:
         return "Статистика недоступна."
 
-def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
+def ask_gpt_trade(type_, news, oi, delta, volume):
     recent_trades = get_last_trades()
     stats_summary = get_stats_summary()
 
-    # 🧠 Адаптивний флет-фільтр: блокує тільки якщо немає BOOSTED і обʼєм малий
+    # 🧠 Адаптивний флет-фільтр
     if is_flat_zone("BTCUSDT") and "BOOSTED" not in type_ and volume < 300:
         return "SKIP"
 
-
-    recent_trades = get_last_trades()
     prompt = f"""
 GPT минулі сигнали:
 {recent_trades}
@@ -251,7 +190,6 @@ GPT минулі сигнали:
 Winrate по типах:
 {stats_summary}
 
-\nGPT минулі сигнали:\n{recent_trades}\n\n
 Останні новини:
 {news}
 
@@ -260,8 +198,6 @@ Open Interest: {oi:,.0f}
 Обʼєм за 1хв: {volume}
 
 Сигнал: {type_.upper()}
-
-Якщо сигнал має префікс BOOSTED_, це означає, що зафіксована агресивна торгівля або великий імпульс. ТИ МАЄШ ПІДТВЕРДИТИ ЙОГО, крім ситуацій із критичними новинами або дуже слабким обсягом.
 
 Чи підтверджуєш цей сигнал?
 - LONG / BOOSTED_LONG / SHORT / BOOSTED_SHORT / SKIP
@@ -292,11 +228,13 @@ def place_long(symbol, usd):
             return
         tp = round(entry * 1.015, 2)
         sl = round(entry * 0.992, 2)
+
         binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
         binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
                                             stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
         binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET',
                                             stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
+
         send_message(f"🟢 LONG OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
         log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
         update_stats_sheet()
@@ -315,17 +253,18 @@ def place_short(symbol, usd):
             return
         tp = round(entry * 0.99, 2)
         sl = round(entry * 1.008, 2)
+
         binance_client.futures_create_order(symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
         binance_client.futures_create_order(symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
                                             stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT')
         binance_client.futures_create_order(symbol=symbol, side='BUY', type='STOP_MARKET',
                                             stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
+
         send_message(f"🔴 SHORT OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
         log_to_sheet("SHORT", entry, tp, sl, qty, None, "GPT сигнал")
         update_stats_sheet()
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
-
 # 📬 Webhook
 @app.post("/webhook")
 async def webhook(req: Request):
@@ -339,12 +278,8 @@ async def webhook(req: Request):
         delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
         last_open_interest = oi
         volume = get_volume("BTCUSDT")
-        decision = ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
+        decision = ask_gpt_trade(signal, news, oi, delta, volume)
         send_message(f"🤖 GPT вирішив: {decision}")
-try:
-    log_gpt_decision(signal, decision)
-except:
-    pass
         log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
         if decision in ["LONG", "BOOSTED_LONG"]:
             place_long("BTCUSDT", TRADE_USD_AMOUNT)
@@ -382,12 +317,8 @@ async def monitor_agg_trades():
                         oi = get_open_interest("BTCUSDT")
                         delta = 0
                         volume = get_volume("BTCUSDT")
-                        decision = ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
+                        decision = ask_gpt_trade(signal, news, oi, delta, volume)
                         send_message(f"🤖 GPT вирішив: {decision}")
-try:
-    log_gpt_decision(signal, decision)
-except:
-    pass
                         log_to_sheet("GPT_DECISION", "", "", "", "", "", f"{signal} → {decision}")
                         if decision in ["BOOSTED_LONG", "LONG"]:
                             place_long("BTCUSDT", TRADE_USD_AMOUNT)
@@ -397,50 +328,6 @@ except:
                 send_message(f"⚠️ WebSocket error: {e}")
                 await asyncio.sleep(5)
 
-# 💰 Моніторинг закриття угод
-async def monitor_closures():
-    while True:
-        for side in ["LONG", "SHORT"]:
-            try:
-                positions = binance_client.futures_position_information(symbol="BTCUSDT")
-                pos = next((p for p in positions if p["positionSide"] == side), None)
-                if pos:
-                    amt = float(pos["positionAmt"])
-                    if amt == 0:
-                        entry = float(pos["entryPrice"])
-                        mark = float(binance_client.futures_mark_price(symbol="BTCUSDT")["markPrice"])
-                        pnl = round((mark - entry) * 1000, 2) if side == "LONG" else round((entry - mark) * 1000, 2)
-                        result = "WIN" if pnl > 0 else "LOSS"
-                        update_result_in_sheet(side, result, f"{pnl:+.2f}")
-            except Exception:
-                pass
-        await asyncio.sleep(60)
-
-# 🔁 Трейлінг-стоп
-trailing_stops = {"LONG": None, "SHORT": None}
-
-async def monitor_trailing_stops():
-    while True:
-        try:
-            for side in ["LONG", "SHORT"]:
-                pos = next((p for p in binance_client.futures_position_information(symbol="BTCUSDT")
-                            if p["positionSide"] == side), None)
-                if pos and float(pos["positionAmt"]) != 0:
-                    entry = float(pos["entryPrice"])
-                    mark = float(binance_client.futures_mark_price(symbol="BTCUSDT")["markPrice"])
-                    profit_pct = (mark - entry) / entry * 100 if side == "LONG" else (entry - mark) / entry * 100
-
-                    if profit_pct >= 0.5 and not trailing_stops[side]:
-                        trailing_stops[side] = entry
-                        send_message(f"🛡 {side}: Стоп у беззбиток")
-
-                    if trailing_stops[side] and profit_pct >= 1.0:
-                        new_stop = round(entry * (1 + (profit_pct - 1) / 100), 2) if side == "LONG" else round(entry * (1 - (profit_pct - 1) / 100), 2)
-                        trailing_stops[side] = new_stop
-                        send_message(f"🔁 {side}: Новий трейлінг-стоп {new_stop}")
-        except:
-            pass
-        await asyncio.sleep(15)
 # 🤖 Автоаналіз щохвилини
 async def monitor_auto_signals():
     global last_open_interest
@@ -462,7 +349,7 @@ async def monitor_auto_signals():
                 await asyncio.sleep(60)
                 continue
 
-            decision = ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
+            decision = ask_gpt_trade(signal, news, oi, delta, volume)
 
             if decision == "SKIP":
                 await asyncio.sleep(60)
@@ -479,7 +366,6 @@ async def monitor_auto_signals():
         except Exception as e:
             send_message(f"❌ Auto signal error: {e}")
         await asyncio.sleep(60)
-
 # 🚀 Запуск
 if __name__ == "__main__":
     import uvicorn
@@ -488,508 +374,14 @@ if __name__ == "__main__":
     def start_ws():
         asyncio.run(monitor_agg_trades())
 
-    def start_closures():
-        asyncio.run(monitor_closures())
-
-    def start_trailing():
-        asyncio.run(monitor_trailing_stops())
-
     def start_auto_signals():
         asyncio.run(monitor_auto_signals())
-    # Запускаємо всі потоки одночасно
+
+    # Запускаємо всі сервіси одночасно
     threading.Thread(target=start_ws).start()
-    threading.Thread(target=start_closures).start()
-    threading.Thread(target=start_trailing).start()
     threading.Thread(target=start_auto_signals).start()
 
     # Запускаємо FastAPI
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 📈 Перевірка відкритої позиції
-def has_open_position(side):
-    try:
-        positions = binance_client.futures_position_information(symbol="BTCUSDT")
-        pos = next((p for p in positions if p["positionSide"] == side), None)
-        return pos and float(pos["positionAmt"]) != 0
-    except:
-        return False
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 📚 Самонавчання GPT + кластерний аналіз до входу + серії перемог
-def get_recent_trades_and_streak(limit=10):
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
-        gclient = gspread.authorize(creds)
-        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheets()[0]
-        data = sheet.get_all_values()[1:]
-        data.reverse()
-        trades = [row for row in data if row[1] in ["LONG", "SHORT", "BOOSTED_LONG", "BOOSTED_SHORT"] and row[6]]
-        recent = trades[:limit]
-        formatted = [f"{i+1}. {row[1]} → {row[6]}" for i, row in enumerate(recent)]
-        streak = 0
-        for row in trades:
-            if row[6].strip().upper() == "WIN":
-                streak += 1
-            else:
-                break
-        return "\n".join(formatted), streak
-    except:
-        return "", 0
-
-def get_stats_summary():
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
-        gclient = gspread.authorize(creds)
-        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheet("Stats")
-        data = sheet.get_all_values()[1:]
-        lines = []
-        for row in data:
-            if len(row) >= 5:
-                lines.append(f"{row[0]}: {row[4]}%")
-        return "\n".join(lines)
-    except:
-        return "Немає статистики"
-
-def get_cluster_snapshot(limit=10):
-    try:
-        sorted_clusters = sorted(cluster_data.items(), key=lambda x: x[0], reverse=True)[-limit:]
-        return "\n".join(
-            f"{int(price)}$: BUY {data['buy']:.2f} | SELL {data['sell']:.2f}"
-            for price, data in sorted_clusters
-        )
-    except:
-        return ""
-
-def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
-    recent_trades, win_streak = get_recent_trades_and_streak()
-    stats_summary = get_stats_summary()
-    clusters = get_cluster_snapshot()
-
-    prompt = f"""
-GPT минулі сигнали:
-{recent_trades}
-
-
-Winrate по типах:
-{stats_summary}
-
-Серія перемог: {win_streak}/5
-
-Сигнал: {type_.upper()}
-Обʼєм: {volume}, Open Interest: {oi}, Зміна OI: {delta:.2f}%
-Останні новини:
-{news}
-
-Кластери:
-{clusters}
-
-Ціль: досягти 5 win-підряд. Прийми зважене рішення. Вибери одне: LONG, SHORT, BOOSTED_LONG, BOOSTED_SHORT, SKIP.
-"""
-    try:
-        res = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[
-                {"role": "system", "content": "Ти скальп-аналітик. Вибери одне: LONG, SHORT, BOOSTED_LONG, BOOSTED_SHORT або SKIP."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return res.choices[0].message.content.strip()
-    except:
-        return "SKIP"
-
-# 📘 Learning Log + пояснення GPT
-def log_learning_entry(trade_type, result, reason, pnl=None):
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
-        gclient = gspread.authorize(creds)
-        sh = gclient.open_by_key(GOOGLE_SHEET_ID)
-
-        try:
-            sheet = sh.worksheet("Learning Log")
-        except:
-            sheet = sh.add_worksheet(title="Learning Log", rows="1000", cols="10")
-            sheet.append_row(["Time", "Type", "Result", "PnL", "GPT Analysis"])
-
-        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        row = [now, trade_type, result, pnl or "", reason]
-        sheet.append_row(row)
-    except Exception as e:
-        send_message(f"❌ Learning Log error: {e}")
-
-def explain_trade_outcome(trade_type, result, pnl):
-    try:
-        prompt = f"""
-Тип угоди: {trade_type}
-Результат: {result}
-PnL: {pnl}
-
-Поясни коротко (1 реченням), чому результат був таким. Якщо помилка — вкажи її.
-"""
-        res = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[
-                {"role": "system", "content": "Ти трейдинг-аналітик. Поясни результат угоди коротко."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return res.choices[0].message.content.strip()
-    except:
-        return "GPT не зміг проаналізувати угоду"
-
-# 🔁 Перезапис update_result_in_sheet
-def update_result_in_sheet(type_, result, pnl=None):
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
-        gclient = gspread.authorize(creds)
-        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheets()[0]
-        data = sheet.get_all_values()
-        for i in reversed(range(len(data))):
-            if data[i][1] == type_ and data[i][6] == "":
-                sheet.update_cell(i + 1, 7, result)
-                if pnl is not None:
-                    sheet.update_cell(i + 1, 8, f"{pnl} USDT")
-                explanation = explain_trade_outcome(type_, result, pnl or "0")
-                log_learning_entry(type_, result, explanation, pnl)
-                break
-    except Exception as e:
-        send_message(f"❌ Update result error: {e}")
-
-# 📊 Daily Report
-def generate_daily_report():
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
-        gclient = gspread.authorize(creds)
-        sh = gclient.open_by_key(GOOGLE_SHEET_ID)
-        sheet = sh.worksheets()[0]
-        data = sheet.get_all_values()[1:]
-        today = datetime.utcnow().strftime("%Y-%m-%d")
-        today_trades = [row for row in data if today in row[0]]
-        total = len(today_trades)
-        wins = sum(1 for r in today_trades if r[6].strip().upper() == "WIN")
-        losses = total - wins
-        winrate = round(wins / total * 100, 2) if total > 0 else 0
-        pnl_total = 0.0
-        for row in today_trades:
-            pnl = row[7].replace("USDT", "").replace("+", "").strip()
-            try:
-                pnl_total += float(pnl) if "WIN" in row[6] else -float(pnl)
-            except:
-                continue
-        best_signals = {}
-        for row in today_trades:
-            sig = row[1]
-            res = row[6].strip().upper()
-            if sig not in best_signals:
-                best_signals[sig] = {"WIN": 0, "LOSS": 0}
-            best_signals[sig][res] += 1
-        top_performers = sorted(best_signals.items(), key=lambda x: x[1]["WIN"], reverse=True)
-        top_summary = ", ".join([f"{k} ({v['WIN']}/{v['WIN']+v['LOSS']})" for k, v in top_performers[:3]])
-        report_text = f"""
-📊 GPT Daily Report — {today}
-Угод: {total}
-Winrate: {winrate}%
-PnL: {pnl_total:.2f} USDT
-Топ сигнали: {top_summary}
-"""
-        try:
-            sheet_daily = sh.worksheet("Daily Report")
-        except:
-            sheet_daily = sh.add_worksheet(title="Daily Report", rows="100", cols="5")
-            sheet_daily.append_row(["Date", "Total", "Winrate %", "PnL USDT", "Top Signals"])
-        sheet_daily.append_row([today, total, winrate, f"{pnl_total:.2f}", top_summary])
-        send_message(report_text)
-    except Exception as e:
-        send_message(f"❌ Daily report error: {e}")
-
-
-
-
-# 🔁 Адаптивний трейлінг зі стопами під контролем GPT
-async def adaptive_trailing_monitor():
-    while True:
-        try:
-            positions = binance_client.futures_position_information(symbol="BTCUSDT")
-            for side in ["LONG", "SHORT"]:
-                pos = next((p for p in positions if p["positionSide"] == side), None)
-                if pos and float(pos["positionAmt"]) != 0:
-                    entry = float(pos["entryPrice"])
-                    mark = float(binance_client.futures_mark_price(symbol="BTCUSDT")["markPrice"])
-                    profit_pct = (mark - entry) / entry * 100 if side == "LONG" else (entry - mark) / entry * 100
-
-                    sorted_clusters = sorted(cluster_data.items(), key=lambda x: x[0], reverse=True)
-                    summary = "\n".join(
-                        f"{int(price)}$: BUY {data['buy']:.2f} | SELL {data['sell']:.2f}"
-                        for price, data in sorted_clusters
-                    )
-                    prompt = f"""
-Позиція: {side}
-Entry: {entry}
-Mark: {mark}
-Профіт: {profit_pct:.2f}%
-Кластери:
-{summary}
-
-Що зробити зі стопом?
-- MOVE_STOP_TO_X (вкажи ціну)
-- KEEP_STOP
-- CLOSE_POSITION
-"""
-                    res = client.chat.completions.create(
-                        model="gpt-4-turbo",
-                        messages=[
-                            {"role": "system", "content": "Ти трейдинг-помічник. Вибери: MOVE_STOP_TO_X, KEEP_STOP, або CLOSE_POSITION."},
-                            {"role": "user", "content": prompt}
-                        ]
-                    )
-                    decision = res.choices[0].message.content.strip()
-                    send_message(f"🤖 GPT Stop: {decision}")
-        except Exception as e:
-            send_message(f"❌ Adaptive trailing error: {e}")
-        await asyncio.sleep(15)
-
-
-
-# 🕛 Автозапуск щоденного GPT-звіту о 23:59
-async def auto_daily_report():
-    while True:
-        now = datetime.utcnow()
-        if now.hour == 23 and now.minute == 59:
-            generate_daily_report()
-            await asyncio.sleep(60)
-        await asyncio.sleep(30)
-
-
-@app.on_event("startup")
-async def start_all():
-    threading.Thread(target=lambda: asyncio.run(monitor_cluster_trades())).start()
-    threading.Thread(target=lambda: asyncio.run(adaptive_trailing_monitor())).start()
-    threading.Thread(target=lambda: asyncio.run(auto_daily_report())).start()
-
-
-# 🧠 Збереження останнього стопу для перевірки дублів
-last_stop_price = {"LONG": None, "SHORT": None}
-
-
-# 📍 Перенесення стопу на Binance (MARKET STOP)
-def move_stop_to(symbol, side, new_stop_price):
-    try:
-        pos = next((p for p in binance_client.futures_position_information(symbol=symbol)
-                    if p["positionSide"] == side), None)
-        if not pos or float(pos["positionAmt"]) == 0:
-            return
-
-        direction = "SELL" if side == "LONG" else "BUY"
-        opposite = "BUY" if direction == "SELL" else "SELL"
-
-        # Уникнути дублю
-        if last_stop_price[side] == new_stop_price:
-            send_message(f"⏸ Стоп вже виставлений на {new_stop_price}, пропускаємо")
-            return
-
-        # Видалити існуючі стопи
-        open_orders = binance_client.futures_get_open_orders(symbol=symbol)
-        for order in open_orders:
-            if order["positionSide"] == side and order["type"] in ["STOP_MARKET", "TAKE_PROFIT_MARKET"]:
-                binance_client.futures_cancel_order(symbol=symbol, orderId=order["orderId"])
-
-        # Виставити новий стоп
-        binance_client.futures_create_order(
-            symbol=symbol,
-            side=opposite,
-            type='STOP_MARKET',
-            stopPrice=new_stop_price,
-            closePosition=True,
-            timeInForce='GTC',
-            positionSide=side
-        )
-        last_stop_price[side] = new_stop_price
-        send_message(f"🛑 Новий стоп ({side}) на {new_stop_price}")
-    except Exception as e:
-        send_message(f"❌ move_stop_to помилка: {e}")
-
-
-async def adaptive_trailing_monitor():
-    while True:
-        try:
-            positions = binance_client.futures_position_information(symbol="BTCUSDT")
-            for side in ["LONG", "SHORT"]:
-                pos = next((p for p in positions if p["positionSide"] == side), None)
-                if pos and float(pos["positionAmt"]) != 0:
-                    entry = float(pos["entryPrice"])
-                    mark = float(binance_client.futures_mark_price(symbol="BTCUSDT")["markPrice"])
-                    profit_pct = (mark - entry) / entry * 100 if side == "LONG" else (entry - mark) / entry * 100
-
-                    sorted_clusters = sorted(cluster_data.items(), key=lambda x: x[0], reverse=True)
-                    summary = "\n".join(
-                        f"{int(price)}$: BUY {data['buy']:.2f} | SELL {data['sell']:.2f}"
-                        for price, data in sorted_clusters
-                    )
-                    prompt = f"""
-Позиція: {side}
-Entry: {entry}
-Mark: {mark}
-Профіт: {profit_pct:.2f}%
-Кластери:
-{summary}
-
-Що зробити зі стопом?
-- MOVE_STOP_TO_X (вкажи ціну)
-- KEEP_STOP
-- CLOSE_POSITION
-"""
-                    res = client.chat.completions.create(
-                        model="gpt-4-turbo",
-                        messages=[
-                            {"role": "system", "content": "Ти трейдинг-помічник. Вибери: MOVE_STOP_TO_X, KEEP_STOP або CLOSE_POSITION."},
-                            {"role": "user", "content": prompt}
-                        ]
-                    )
-                    decision = res.choices[0].message.content.strip()
-                    send_message(f"🤖 GPT Stop Decision: {decision}")
-
-                    if decision.startswith("MOVE_STOP_TO_"):
-                        price_str = decision.split("_")[-1]
-                        try:
-                            new_price = float(price_str)
-                            move_stop_to("BTCUSDT", side, new_price)
-                        except:
-                            send_message("❗ Не вдалося розпізнати новий STOP")
-                    elif decision == "CLOSE_POSITION":
-                        binance_client.futures_create_order(
-                            symbol="BTCUSDT",
-                            side="SELL" if side == "LONG" else "BUY",
-                            type="MARKET",
-                            quantity=abs(float(pos["positionAmt"])),
-                            positionSide=side
-                        )
-                        send_message(f"❌ Закрили позицію {side} по рішенню GPT")
-
-        except Exception as e:
-            send_message(f"❌ adaptive_trailing_monitor error: {e}")
-        await asyncio.sleep(15)
-
-try:
-    def log_gpt_decision(raw_signal, gpt_decision):
-except:
-    pass
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
-        gclient = gspread.authorize(creds)
-        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheets()[0]
-        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        row = [now, "GPT_DECISION", "", "", "", "", "", f"{raw_signal} → {gpt_decision}"]
-        sheet.append_row(row)
-    except:
-        pass
