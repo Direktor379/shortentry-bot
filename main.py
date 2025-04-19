@@ -245,6 +245,7 @@ def ask_gpt_trade(type_, news, oi, delta, volume):
     prompt = f"""
 Попередні помилки:
 {mistakes}
+
 """ + f"""
 GPT минулі сигнали:
 {recent_trades}
@@ -670,6 +671,7 @@ def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
     prompt = f"""
 Попередні помилки:
 {mistakes}
+
 """ + f"""
 GPT минулі сигнали:
 {recent_trades}
@@ -734,6 +736,7 @@ def explain_trade_outcome(trade_type, result, pnl):
     prompt = f"""
 Попередні помилки:
 {mistakes}
+
 """ + f"""
 Тип угоди: {trade_type}
 Результат: {result}
@@ -806,6 +809,7 @@ def get_recent_mistakes(limit=5):
         return "\n".join(f"- {row[4]}" for row in mistakes[:limit])
     except:
         return ""
+
 
 
 
