@@ -281,8 +281,8 @@ Open Interest: {oi:,.0f}
 def place_long(symbol, usd):
     if has_open_position("LONG"):
         send_message("⚠️ Уже відкрита LONG позиція")
-        return
-    try:
+        try:
+    pass
 except:
     pass
         entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
