@@ -342,10 +342,7 @@ async def webhook(req: Request):
         last_open_interest = oi
         volume = get_volume("BTCUSDT")
         decision = ask_gpt_trade(signal, news, oi, delta, volume)
-        try:
-            print(f"[AUTO] Signal: {signal} → GPT: {decision}")
-        except:
-            pass
+        print(f"[AUTO] Signal: {signal} → GPT: {decision}")
         gpt_decision_log.append(decision)
         global skip_counter
         if decision == "SKIP": skip_counter += 1
@@ -388,10 +385,7 @@ async def monitor_agg_trades():
                         delta = 0
                         volume = get_volume("BTCUSDT")
                         decision = ask_gpt_trade(signal, news, oi, delta, volume)
-        try:
-            print(f"[AUTO] Signal: {signal} → GPT: {decision}")
-        except:
-            pass
+        print(f"[AUTO] Signal: {signal} → GPT: {decision}")
         gpt_decision_log.append(decision)
         global skip_counter
         if decision == "SKIP": skip_counter += 1
@@ -471,10 +465,7 @@ async def monitor_auto_signals():
                 continue
 
             decision = ask_gpt_trade(signal, news, oi, delta, volume)
-        try:
-            print(f"[AUTO] Signal: {signal} → GPT: {decision}")
-        except:
-            pass
+        print(f"[AUTO] Signal: {signal} → GPT: {decision}")
         gpt_decision_log.append(decision)
         global skip_counter
         if decision == "SKIP": skip_counter += 1
