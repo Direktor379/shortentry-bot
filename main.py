@@ -144,9 +144,11 @@ def is_flat_zone(symbol="BTCUSDT"):
 
 # 🤖 GPT
 def ask_gpt_trade(type_, news, oi, delta, volume):
-    # Вимкнено флет-фільтр для тесту
-    # if is_flat_zone("BTCUSDT"):
-    #     return "SKIP"
+    
+    # 🧠 Адаптивний флет-фільтр: блокує тільки якщо немає BOOSTED і обʼєм малий
+    if is_flat_zone("BTCUSDT") and "BOOSTED" not in type_ and volume < 300:
+        return "SKIP"
+
 
     prompt = f"""
 Останні новини:
@@ -417,6 +419,7 @@ def has_open_position(side):
         return pos and float(pos["positionAmt"]) != 0
     except:
         return False
+
 
 
 
