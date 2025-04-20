@@ -750,7 +750,7 @@ def get_stats_summary():
         for row in data:
             if len(row) >= 5:
                 lines.append(f"{row[0]}: {row[4]}%")
-           return "\n".join(lines)
+        return "\n".join(lines)
     except:
         return "Немає статистики"
 
