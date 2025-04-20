@@ -813,22 +813,19 @@ def explain_trade_outcome(trade_type, result, pnl):
 Результат: {result}
 PnL: {pnl}
 Поясни коротко (1 реченням), чому результат був таким. Якщо помилка — вкажи її.
-"""
+
         res = client.chat.completions.create(
             model="gpt-4-turbo",
-            messages=[
                 {"role": "system", "content": "Ти трейдинг-аналітик. Поясни результат угоди коротко."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-    try:
-       res = client.chat.completions.create(
+        try:
+    res = client.chat.completions.create(
         model="gpt-4-turbo",
         messages=[
             {"role": "system", "content": "Ти трейдинг-аналітик. Поясни результат угоди коротко."},
             {"role": "user", "content": prompt}
         ]
     )
+    return res.choices[0].message.content.strip()
     return res.choices[0].message.content.strip()
 except Exception as e:
     return f"GPT не зміг проаналізувати угоду: {e}"
