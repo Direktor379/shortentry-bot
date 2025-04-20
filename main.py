@@ -821,17 +821,18 @@ PnL: {pnl}
                 {"role": "user", "content": prompt}
             ]
         )
-            try:
-        res = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[
-                {"role": "system", "content": "Ти трейдинг-аналітик. Поясни результат угоди коротко."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return res.choices[0].message.content.strip()
-    except Exception as e:
-        return f"GPT не зміг проаналізувати угоду: {e}"
+    try:
+       res = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[
+            {"role": "system", "content": "Ти трейдинг-аналітик. Поясни результат угоди коротко."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return res.choices[0].message.content.strip()
+except Exception as e:
+    return f"GPT не зміг проаналізувати угоду: {e}"
+
     def place_long(symbol, usd):
     if has_open_position("LONG"):
         send_message("⚠️ Уже відкрита LONG позиція")
