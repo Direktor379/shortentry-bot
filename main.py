@@ -866,6 +866,25 @@ async def monitor_cluster_trades():
 
 
 # ⏱ GPT кластерний аналіз і самостійне відкриття угод (без Telegram)
+async def monitor_gpt_cluster_signals():
+    while True:
+        try:
+            clusters = get_cluster_snapshot()
+            news = get_latest_news()
+            oi = get_open_interest("BTCUSDT")
+            volume = get_volume("BTCUSDT")
+            delta = 0
+            signal = "CLUSTER"
+            decision = ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
+            if decision != "SKIP":
+                log_to_sheet("GPT_DECISION", "", "", "", "", "", f"CLUSTER → {decision}")
+                if decision in ["LONG", "BOOSTED_LONG"]:
+                    place_long("BTCUSDT", TRADE_USD_AMOUNT)
+                elif decision in ["SHORT", "BOOSTED_SHORT"]:
+                    place_short("BTCUSDT", TRADE_USD_AMOUNT)
+        except Exception as e:
+            print(f"[monitor_gpt_cluster_signals] Error: {e}")
+        await asyncio.sleep(30)
 
 
 
@@ -873,9 +892,9 @@ async def monitor_cluster_trades():
 @app.on_event("startup")
 async def start_all():
     threading.Thread(target=lambda: asyncio.run(monitor_cluster_trades())).start()
+    threading.Thread(target=lambda: asyncio.run(monitor_gpt_cluster_signals())).start()
     threading.Thread(target=lambda: asyncio.run(adaptive_trailing_monitor())).start()
     threading.Thread(target=lambda: asyncio.run(auto_daily_report())).start()
-    threading.Thread(target=lambda: asyncio.run(monitor_whale_summary())).start()
 
 
 # 📍 Перенесення стопу на Binance (MARKET STOP)
@@ -967,7 +986,6 @@ Mark: {mark}
         except Exception as e:
             send_message(f"❌ GPT трейлінг помилка: {e}")
         await asyncio.sleep(60)
-
 
 
 
