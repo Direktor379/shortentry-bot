@@ -771,7 +771,7 @@ Winrate по типах:
 {mistakes}
 
 Сигнал: {type_.upper()}
-Обʼєм: {volume}, Open Interest: {oi}, Зміна OI: {delta:.2f}%
+Об'єм: {volume}, Open Interest: {oi}, Зміна OI: {delta:.2f}%
 Останні новини:
 {news}
 
@@ -812,25 +812,21 @@ def explain_trade_outcome(trade_type, result, pnl):
 Тип угоди: {trade_type}
 Результат: {result}
 PnL: {pnl}
-Поясни коротко (1 реченням), чому результат був таким. Якщо помилка — вкажи її.
 
+Поясни коротко (1 реченням), чому результат був таким. Якщо помилка — вкажи її.
+"""
         res = client.chat.completions.create(
             model="gpt-4-turbo",
+            messages=[
                 {"role": "system", "content": "Ти трейдинг-аналітик. Поясни результат угоди коротко."},
-        try:
-    res = client.chat.completions.create(
-        model="gpt-4-turbo",
-        messages=[
-            {"role": "system", "content": "Ти трейдинг-аналітик. Поясни результат угоди коротко."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    return res.choices[0].message.content.strip()
-    return res.choices[0].message.content.strip()
-except Exception as e:
-    return f"GPT не зміг проаналізувати угоду: {e}"
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return res.choices[0].message.content.strip()
+    except Exception as e:
+        return f"GPT не зміг проаналізувати угоду: {e}"
 
-    def place_long(symbol, usd):
+def place_long(symbol, usd):
     if has_open_position("LONG"):
         send_message("⚠️ Уже відкрита LONG позиція")
         return
@@ -875,6 +871,7 @@ def place_short(symbol, usd):
         update_stats_sheet()
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
+
 # 📡 Кластерний WebSocket аналіз
 def has_open_position(side):
     try:
