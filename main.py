@@ -352,7 +352,7 @@ PnL: {pnl}
         return res.choices[0].message.content.strip()
     except:
         return "GPT не зміг проаналізувати угоду"
-   from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request
 import requests
 import os
 from dotenv import load_dotenv
