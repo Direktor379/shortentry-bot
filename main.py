@@ -822,20 +822,28 @@ PnL: {pnl}
             ]
         )
         return res.choices[0].message.content.strip()
-    except:
-        return "GPT не зміг проаналізувати угоду"
-        def place_long(symbol, usd):
+    def place_long(symbol, usd):
     if has_open_position("LONG"):
         send_message("⚠️ Уже відкрита LONG позиція")
         return
     try:
         entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
         qty = get_quantity(symbol, usd)
+        if not qty:
+            send_message("❌ Обсяг не визначено.")
+            return
         tp = round(entry * 1.015, 2)
         sl = round(entry * 0.992, 2)
-        binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET', stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
-        binance_client.futures_create_order(symbol=symbol, side='SELL', type='STOP_MARKET', stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
+
+        binance_client.futures_create_order(
+            symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
+        binance_client.futures_create_order(
+            symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
+            stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
+        binance_client.futures_create_order(
+            symbol=symbol, side='SELL', type='STOP_MARKET',
+            stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
+
         send_message(f"🟢 LONG OPEN {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
         log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
         update_stats_sheet()
