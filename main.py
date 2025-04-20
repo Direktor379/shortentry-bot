@@ -45,7 +45,7 @@ def send_message(text: str):
         )
     except Exception as e:
         print(f"Telegram error: {e}")
- main_13.py
+ main.py
 # 💡 Версія: GPT Memory + Clusters + AutoAnalyze + Whale + Telegram Core
 # Комбінує logіку з main_12.py і main_full_with_clusters.py
 
