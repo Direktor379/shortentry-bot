@@ -1,7 +1,3 @@
-# main_13.py
-# 💡 Версія: GPT Memory + Clusters + AutoAnalyze + Whale + Telegram Core
-# Комбінує logіку з main_12.py і main_full_with_clusters.py
-
 from fastapi import FastAPI, Request
 import requests
 import os
