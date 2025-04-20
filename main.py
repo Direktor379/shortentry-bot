@@ -1,4 +1,4 @@
-# main_13.py — повна фінальна версія
+# main.py — повна фінальна версія
 
 from fastapi import FastAPI, Request
 import requests
@@ -263,9 +263,9 @@ def get_recent_trades_and_streak(limit=10):
                 streak += 1
             else:
                 break
-        return "
-".join(formatted), streak
-    except:
+       return "\n".join(formatted), streak 
+
+  except:
         return "", 0
 
 def get_stats_summary():
