@@ -982,7 +982,44 @@ Mark: {mark}
                             quantity=abs(float(pos["positionAmt"])),
                             positionSide=side
                         )
-                        send_message(f"❌ Закрито позицію {side} по рішенню GPT")
+                        send_message(f"❌ Закрито позицію {side} по рішенню GPT")            
+                  # GPT динамічний тейк-профіт
+            prompt_tp = f"Позиція: {side}\\nEntry: {entry}\\nMark: {mark}\\nПрофіт: {profit_pct:.2f}%\\nКластери:\\n{summary}\\n\\nЯкий тейк-профіт встановити?\\n- NEW_TP_TO_XXXXX\\n- KEEP_TP\\n- REMOVE_TP"
+
+            res_tp = client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[
+                    {"role": "system", "content": "Ти помічник трейдера. Вибери один: NEW_TP_TO_X, KEEP_TP або REMOVE_TP."},
+                    {"role": "user", "content": prompt_tp}
+                ]
+            )
+
+            tp_decision = res_tp.choices[0].message.content.strip()
+            open_orders = binance_client.futures_get_open_orders(symbol="BTCUSDT")
+            current_tp = next((o for o in open_orders if o["positionSide"] == side and o["type"] == "TAKE_PROFIT_MARKET"), None)
+
+            if tp_decision == "REMOVE_TP" and current_tp:
+                binance_client.futures_cancel_order(symbol="BTCUSDT", orderId=current_tp["orderId"])
+                send_message(f"🗑 TP видалено ({side})")
+
+            elif tp_decision.startswith("NEW_TP_TO_"):
+                try:
+                    new_tp = float(tp_decision.split("_")[-1])
+                    if current_tp:
+                        binance_client.futures_cancel_order(symbol="BTCUSDT", orderId=current_tp["orderId"])
+                    binance_client.futures_create_order(
+                        symbol="BTCUSDT",
+                        side="SELL" if side == "LONG" else "BUY",
+                        type="TAKE_PROFIT_MARKET",
+                        stopPrice=new_tp,
+                        closePosition=True,
+                        timeInForce="GTC",
+                        positionSide=side
+                    )
+                    send_message(f"🎯 GPT встановив новий TP ({side}): {new_tp}")
+                except:
+                    send_message("❗ Некоректний формат NEW_TP_TO_XXXXX")
+ 
         except Exception as e:
             send_message(f"❌ GPT трейлінг помилка: {e}")
         await asyncio.sleep(60)
