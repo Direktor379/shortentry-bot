@@ -2,7 +2,6 @@
 # 💡 Версія: GPT Memory + Clusters + AutoAnalyze + Whale + Telegram Core
 # Комбінує logіку з main_12.py і main_full_with_clusters.py
 
-# ✳️ Починаємо з імпорту, ENV, клієнтів, FastAPI
 from fastapi import FastAPI, Request
 import requests
 import os
@@ -40,11 +39,12 @@ last_open_interest = None
 # 📬 Telegram
 def send_message(text: str):
     try:
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": text})
-    except:
-        pass
-
-# 📈 Далі — Market utils, Google Sheets, кластерна памʼять та GPT аналіз — у наступній частині...
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            data={"chat_id": CHAT_ID, "text": text}
+        )
+    except Exception as e:
+        print(f"Telegram error: {e}")
  main_13.py
 # 💡 Версія: GPT Memory + Clusters + AutoAnalyze + Whale + Telegram Core
 # Комбінує logіку з main_12.py і main_full_with_clusters.py
