@@ -478,8 +478,7 @@ def get_recent_mistakes(limit=5):
         sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheet("Learning Log")
         data = sheet.get_all_values()[1:]
         mistakes = [row for row in reversed(data) if row[2].strip().upper() == "LOSS" and row[4].strip()]
-        return "
-".join(f"- {row[4]}" for row in mistakes[:limit])
+        return "\n".join(f"- {row[4]}" for row in mistakes[:limit])
     except:
         return ""
 
