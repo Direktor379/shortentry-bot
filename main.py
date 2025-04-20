@@ -852,18 +852,21 @@ async def monitor_cluster_trades():
                 qty = float(msg["q"])
                 is_sell = msg["m"]
                 side = "sell" if is_sell else "buy"
-                if price not in cluster_data:
-                    cluster_data[price] = {"buy": 0.0, "sell": 0.0}
-                cluster_data[price][side] += qty
-                # очистка старих
-                now = int(datetime.utcnow().timestamp())
-                for p in list(cluster_data.keys()):
-                    if abs(p - price) > 200:
-                        del cluster_data[p]
+                total = price * qty
+                if total >= 1_000_000:
+                    send_message(f"🐋 {side.upper()} {round(total):,} USD @ {price}")
             except Exception as e:
                 send_message(f"❌ Cluster WS error: {e}")
                 await asyncio.sleep(5)
-
+    uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
+    async with websockets.connect(uri) as websocket:
+        while True:
+            try:
+                msg = json.loads(await websocket.recv())
+                price = round(float(msg["p"]))
+                qty = float(msg["q"])
+                is_sell = msg["m"]
+                side = "sell" if is_sell else "buy"
 
 # ⏱ GPT кластерний аналіз і самостійне відкриття угод (без Telegram)
 async def monitor_gpt_cluster_signals():
@@ -982,17 +985,10 @@ Mark: {mark}
                             quantity=abs(float(pos["positionAmt"])),
                             positionSide=side
                         )
-                        send_message(f"❌ Закрито позицію {side} по рішенню GPT")
+                        send_message(f"❌ Закрито позицію {side} по рішенню GPT")            
+                  # GPT динамічний тейк-профіт
+                    send_message("❗ Некоректний формат NEW_TP_TO_XXXXX")
+ 
         except Exception as e:
             send_message(f"❌ GPT трейлінг помилка: {e}")
         await asyncio.sleep(60)
-
-
-
-
-
-
-
-
-
-
