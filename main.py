@@ -313,7 +313,7 @@ PnL: {pnl}
 
 Поясни коротко (1 реченням), чому результат був таким. Якщо була помилка — вкажи її.
 """
-        res = client.chat.completions.create(  ✅  
+        res = client.chat.completions.create(   
             model="gpt-4-turbo",
             messages=[
                 {"role": "system", "content": "Ти трейдинг-аналітик. Поясни, чому угода завершилась з таким результатом. Відповідь має бути короткою, по суті."},
