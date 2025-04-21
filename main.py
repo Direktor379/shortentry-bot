@@ -46,8 +46,10 @@ def send_message(text: str):
         data = {"chat_id": CHAT_ID, "text": text}
         requests.post(url, data=data)
     except Exception as e:
-        print(f"Telegram error: {e}") 
-        def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
+        print(f"Telegram error: {e}")  # <-- тут закінчується функція
+
+# 📊 Запис у Google Sheets
+def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
