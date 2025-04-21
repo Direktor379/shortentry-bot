@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 import requests
 from datetime import datetime
-import openai
+from openai import OpenAI
 from binance.client import Client
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -36,7 +36,7 @@ DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"  # 🧪 режим т�
 
 # 🔌 Ініціалізація клієнтів
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
-openai.api_key = OPENAI_API_KEY
+client = OpenAI(api_key=OPENAI_API_KEY)
 last_open_interest = None
 
 # 📬 Відправка повідомлень у Telegram
@@ -266,7 +266,7 @@ Open Interest: {oi_text}
 - LONG / BOOSTED_LONG / SHORT / BOOSTED_SHORT / SKIP
 """
 
-        res = openai.ChatCompletion.create(
+        res = client.chat.completions.create(
             model="gpt-4-turbo",
             messages=[
                 {
@@ -313,7 +313,7 @@ PnL: {pnl}
 
 Поясни коротко (1 реченням), чому результат був таким. Якщо була помилка — вкажи її.
 """
-        res = openai.ChatCompletion.create(
+        res = client.chat.completions.create(  ✅  
             model="gpt-4-turbo",
             messages=[
                 {"role": "system", "content": "Ти трейдинг-аналітик. Поясни, чому угода завершилась з таким результатом. Відповідь має бути короткою, по суті."},
