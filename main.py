@@ -682,6 +682,43 @@ async def webhook(req: Request):
             text = get_gpt_debug_activity_today()
             send_message(text)
             return {"ok": True}
+            @app.post("/webhook")
+async def webhook(req: Request):
+    global last_open_interest
+    try:
+        data = await req.json()
+        signal = data.get("message", "").strip().upper()
+
+        if signal == "/debug_activity":
+            text = get_gpt_debug_activity_today()
+            send_message(text)
+            return {"ok": True}
+
+        # ✅ НОВА КОМАНДА /force_check
+        if signal == "/force_check":
+            oi = get_open_interest("BTCUSDT")
+            volume = get_volume("BTCUSDT")
+            news = get_latest_news()
+
+            delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
+            last_open_interest = oi
+
+            send_message(f"🧪 /force_check → OI: {oi:,.0f} | Volume: {volume} | ΔOI: {delta:.2f}%")
+
+            # Примусовий аналіз
+            signal_type = "LONG" if delta > 0 else "SHORT"
+            decision = await ask_gpt_trade_with_all_context(signal_type, news, oi, delta, volume)
+            send_message(f"🤖 GPT (force): {decision} на базі delta {delta:.2f}%")
+
+            if decision in ["LONG", "BOOSTED_LONG"]:
+                await asyncio.to_thread(place_long, "BTCUSDT", TRADE_USD_AMOUNT)
+            elif decision in ["SHORT", "BOOSTED_SHORT"]:
+                await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
+
+            return {"ok": True}
+
+        # 🌐 Стандартний обробник сигналів:
+        send_message(f"📩 Отримано сигнал: {signal}")
 
         send_message(f"📩 Отримано сигнал: {signal}")
 
