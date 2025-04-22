@@ -356,6 +356,14 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
         sheet.append_row(row)
     except Exception as e:
         send_message(f"❌ Learning Log error: {e}")
+        def get_quantity(symbol, usd_amount):
+    try:
+        price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        quantity = round(usd_amount / price, 3)
+        return quantity
+    except Exception as e:
+        send_message(f"❌ get_quantity error: {e}")
+        return None
 def has_open_position(side):
     try:
         positions = binance_client.futures_position_information(symbol="BTCUSDT")
