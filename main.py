@@ -346,7 +346,7 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
         sheet.append_row(row)
     except Exception as e:
         send_message(f"❌ Learning Log error: {e}")
-        def place_long(symbol, usd):
+    def place_long(symbol, usd):
     if has_open_position("LONG"):
         send_message("⚠️ Уже відкрита LONG позиція")
         return
@@ -380,6 +380,7 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
 
     except Exception as e:
         send_message(f"❌ Binance LONG error: {e}")
+
 
 def place_short(symbol, usd):
     if has_open_position("SHORT"):
@@ -415,7 +416,6 @@ def place_short(symbol, usd):
 
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
-
 async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing
     uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
