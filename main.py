@@ -346,26 +346,33 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
         sheet.append_row(row)
     except Exception as e:
         send_message(f"❌ Learning Log error: {e}")
-# 📡 Кластерна логіка: bucket'и по $10 і імпульс на 5 секундах
-
-CLUSTER_BUCKET_SIZE = 10
-CLUSTER_INTERVAL = 60  # перевірка раз на 60 сек
-cluster_data = defaultdict(lambda: {"buy": 0.0, "sell": 0.0})
-cluster_last_reset = time.time()
-cluster_is_processing = False  # захист від дублів
-
 async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing
     uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
     async with websockets.connect(uri) as websocket:
+        trade_buffer = []
+        buffer_duration = 5  # секунд
+
         while True:
             try:
                 msg = json.loads(await websocket.recv())
                 price = float(msg['p'])
                 qty = float(msg['q'])
                 is_sell = msg['m']
-                bucket = round(price / CLUSTER_BUCKET_SIZE) * CLUSTER_BUCKET_SIZE
+                timestamp = time.time()
 
+                trade_buffer.append({
+                    "price": price,
+                    "qty": qty,
+                    "is_sell": is_sell,
+                    "timestamp": timestamp
+                })
+
+                # Очистка буфера (лише останні N секунд)
+                trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
+
+                # Кластер по $10
+                bucket = round(price / CLUSTER_BUCKET_SIZE) * CLUSTER_BUCKET_SIZE
                 if is_sell:
                     cluster_data[bucket]['sell'] += qty
                 else:
@@ -373,147 +380,74 @@ async def monitor_cluster_trades():
 
                 now = time.time()
                 if now - cluster_last_reset >= CLUSTER_INTERVAL and not cluster_is_processing:
-                    cluster_is_processing = True  # блокуємо повтори
+                    cluster_is_processing = True
 
-                    # Фіксуємо імпульс
+                    # Аналіз найбільш активного bucket
                     strongest_bucket = max(cluster_data.items(), key=lambda x: x[1]["buy"] + x[1]["sell"])
                     total_buy = strongest_bucket[1]["buy"]
                     total_sell = strongest_bucket[1]["sell"]
                     total = total_buy + total_sell
 
+                    # BUY/SELL агрегація за останні 5 секунд
+                    buy_volume = sum(t["qty"] for t in trade_buffer if not t["is_sell"])
+                    sell_volume = sum(t["qty"] for t in trade_buffer if t["is_sell"])
+                    buy_ratio = (buy_volume / (buy_volume + sell_volume)) * 100 if (buy_volume + sell_volume) > 0 else 0
+                    sell_ratio = 100 - buy_ratio
+
+                    # Визначаємо кластерний сигнал з урахуванням buy/sell домінації
                     signal = None
-                    if total_buy >= 30:
-                       signal = "BOOSTED_LONG"
+                    if buy_ratio >= 75 and total_buy >= 40:
+                        signal = "SUPER_BOOSTED_LONG"
+                    elif sell_ratio >= 75 and total_sell >= 40:
+                        signal = "SUPER_BOOSTED_SHORT"
+                    elif total_buy >= 30:
+                        signal = "BOOSTED_LONG"
                     elif total_sell >= 30:
                         signal = "BOOSTED_SHORT"
 
-                   # 📊 Логуємо потужні кластери, які не стали BOOSTED
+                    # Не BOOSTED, але є активність
                     if signal is None and (total_buy > 20 or total_sell > 20):
-                        send_message(f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED")
-
+                        send_message(
+                            f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED"
+                        )
                         if total_sell > total_buy:
-                           signal = "BOOSTED_SHORT"
+                            signal = "BOOSTED_SHORT"
                         elif total_buy > total_sell:
-                           signal = "BOOSTED_LONG"
-
+                            signal = "BOOSTED_LONG"
 
                     if signal:
                         news = get_latest_news()
                         oi = get_open_interest("BTCUSDT")
                         volume = get_volume("BTCUSDT")
-                        decision = await ask_gpt_trade_with_all_context(signal, news, oi, 0, volume)
+
+                        # Додаємо напрям кластера в prompt
+                        cluster_direction_info = f"Кластерний напрям: Buy {buy_ratio:.1f}%, Sell {sell_ratio:.1f}%"
+
+                        decision = await ask_gpt_trade_with_all_context(
+                            signal,
+                            f"{cluster_direction_info}\n\n{news}",
+                            oi, 0, volume
+                        )
 
                         send_message(f"💥 {signal} — кластер {strongest_bucket[0]} | Buy: {round(total_buy)}, Sell: {round(total_sell)}")
-                        send_message(f"🤖 GPT кластер: {decision}")
+                        send_message(f"🤖 GPT кластер: {decision} | {cluster_direction_info}")
 
-                        if decision in ["LONG", "BOOSTED_LONG"]:
+                        if "SUPER" in signal:
+                            send_message(f"🚀 {signal} кластер: домінація {'BUY' if 'LONG' in signal else 'SELL'} {round(max(buy_ratio, sell_ratio))}%")
+
+                        if decision in ["LONG", "BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
                             await asyncio.to_thread(place_long, "BTCUSDT", TRADE_USD_AMOUNT)
-                        elif decision in ["SHORT", "BOOSTED_SHORT"]:
+                        elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
                             await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
 
                     cluster_data.clear()
                     cluster_last_reset = now
-                    cluster_is_processing = False  # розблокування
+                    cluster_is_processing = False
 
             except Exception as e:
                 send_message(f"⚠️ Cluster WS error: {e}")
                 await asyncio.sleep(5)
-# 📈 Торгівля: відкриття LONG/SHORT з DRY_RUN та перевірками
 
-def has_open_position(side):
-    try:
-        positions = binance_client.futures_position_information(symbol="BTCUSDT")
-        for p in positions:
-            amt = float(p["positionAmt"])
-            if side == "LONG" and amt > 0:
-                return True
-            if side == "SHORT" and amt < 0:
-                return True
-        return False
-    except Exception as e:
-        send_message(f"❌ Position check error: {e}")
-        return False
-
-def get_quantity(symbol, usd_amount):
-    try:
-        mark_price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-        return round(usd_amount / mark_price, 3)  # округлення до 0.001 BTC
-    except Exception as e:
-        send_message(f"❌ Quantity calc error: {e}")
-        return None
-
-def place_long(symbol, usd):
-    if has_open_position("LONG"):
-        send_message("⚠️ Уже відкрита LONG позиція")
-        return
-
-    try:
-        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-        qty = get_quantity(symbol, usd)
-        if not qty:
-            send_message("❌ Не вдалося розрахувати кількість")
-            return
-
-        tp = round(entry * 1.015, 2)
-        sl = round(entry * 0.992, 2)
-
-        if DRY_RUN:
-            send_message(f"🤖 [DRY_RUN] LONG\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
-        else:
-            binance_client.futures_create_order(
-                symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
-            binance_client.futures_create_order(
-                symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
-                stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
-            binance_client.futures_create_order(
-                symbol=symbol, side='SELL', type='STOP_MARKET',
-                stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
-
-            send_message(f"🟢 LONG OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
-
-        log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
-        update_stats_sheet()
-
-    except Exception as e:
-        send_message(f"❌ Binance LONG error: {e}")
-
-def place_short(symbol, usd):
-    if has_open_position("SHORT"):
-        send_message("⚠️ Уже відкрита SHORT позиція")
-        return
-
-    try:
-        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-        qty = get_quantity(symbol, usd)
-        if not qty:
-            send_message("❌ Не вдалося розрахувати кількість")
-            return
-
-        tp = round(entry * 0.99, 2)
-        sl = round(entry * 1.008, 2)
-
-        if DRY_RUN:
-            send_message(f"🤖 [DRY_RUN] SHORT\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
-        else:
-            binance_client.futures_create_order(
-                symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
-            binance_client.futures_create_order(
-                symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
-                stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT')
-            binance_client.futures_create_order(
-                symbol=symbol, side='BUY', type='STOP_MARKET',
-                stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
-
-            send_message(f"🔴 SHORT OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
-
-        log_to_sheet("SHORT", entry, tp, sl, qty, None, "GPT сигнал")
-        update_stats_sheet()
-
-    except Exception as e:
-        send_message(f"❌ Binance SHORT error: {e}")
-# 🔁 Трейлінг-стоп логіка
-
-trailing_stops = {"LONG": None, "SHORT": None}
 
 # 🧰 Утиліта для скасування старих STOP-ордерів
 def cancel_existing_stop_order(side):
