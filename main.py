@@ -682,8 +682,6 @@ async def webhook(req: Request):
             text = get_gpt_debug_activity_today()
             send_message(text)
             return {"ok": True}
-            @app.post("/webhook")
-async def webhook(req: Request):
     global last_open_interest
     try:
         data = await req.json()
