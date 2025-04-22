@@ -685,7 +685,7 @@ async def webhook(req: Request):
 
         if signal == "/force_check":
             try:
-                send_message("📥 Отримано команду /force_check")
+                send_message(f"🧩 Отримано raw signal: [{signal}]")
 
                 oi = get_open_interest("BTCUSDT")
                 volume = get_volume("BTCUSDT")
