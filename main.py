@@ -646,9 +646,9 @@ async def monitor_auto_signals():
             last_open_interest = oi
 
             # Генеруємо базовий сигнал
-            if delta > 0.2:
+            if delta > 0.05:
                 signal = "LONG"
-            elif delta < -0.2:
+            elif delta < -0.05:
                 signal = "SHORT"
             else:
                 signal = None
