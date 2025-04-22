@@ -341,7 +341,7 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
             sheet = sh.add_worksheet(title="Learning Log", rows="1000", cols="10")
             sheet.append_row(["Time", "Type", "Result", "PnL", "GPT Analysis"])
 
-                now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         row = [now, trade_type, result, pnl or "", reason]
         sheet.append_row(row)
     except Exception as e:
