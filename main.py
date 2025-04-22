@@ -341,12 +341,12 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
             sheet = sh.add_worksheet(title="Learning Log", rows="1000", cols="10")
             sheet.append_row(["Time", "Type", "Result", "PnL", "GPT Analysis"])
 
-        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         row = [now, trade_type, result, pnl or "", reason]
         sheet.append_row(row)
     except Exception as e:
         send_message(f"❌ Learning Log error: {e}")
-    def place_long(symbol, usd):
+def place_long(symbol, usd):
     if has_open_position("LONG"):
         send_message("⚠️ Уже відкрита LONG позиція")
         return
@@ -360,6 +360,7 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
 
         tp = round(entry * 1.015, 2)
         sl = round(entry * 0.992, 2)
+
 
         if DRY_RUN:
             send_message(f"🤖 [DRY_RUN] LONG\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
