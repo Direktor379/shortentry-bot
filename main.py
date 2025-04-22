@@ -381,9 +381,13 @@ async def monitor_cluster_trades():
 
                    # 📊 Логуємо потужні кластери, які не стали BOOSTED
                     if signal is None and (total_buy > 20 or total_sell > 20):
-                        send_message(f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED (поріг: 1000)")
+                        send_message(f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED")
 
-                        signal = "BOOSTED_SHORT"
+                        if total_sell > total_buy:
+                           signal = "BOOSTED_SHORT"
+                        elif total_buy > total_sell:
+                           signal = "BOOSTED_LONG"
+
 
                     if signal:
                         news = get_latest_news()
