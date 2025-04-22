@@ -689,11 +689,11 @@ async def webhook(req: Request):
           try:
             send_message("📥 Отримано команду /force_check")
 
-           oi = get_open_interest("BTCUSDT")
-           volume = get_volume("BTCUSDT")
-           news = get_latest_news()
-           delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
-           last_open_interest = oi
+            oi = get_open_interest("BTCUSDT")
+            volume = get_volume("BTCUSDT")
+            news = get_latest_news()
+            delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
+            last_open_interest = oi
 
            send_message(f"🧪 /force_check → OI: {oi:,.0f} | Volume: {volume} | ΔOI: {delta:.2f}%")
 
@@ -701,7 +701,7 @@ async def webhook(req: Request):
            decision = await ask_gpt_trade_with_all_context(signal_type, news, oi, delta, volume)
             send_message(f"🤖 GPT (force): {decision} на базі delta {delta:.2f}%")
 
-     if decision in ["LONG", "BOOSTED_LONG"]:
+        if decision in ["LONG", "BOOSTED_LONG"]:
             await asyncio.to_thread(place_long, "BTCUSDT", TRADE_USD_AMOUNT)
         elif decision in ["SHORT", "BOOSTED_SHORT"]:
             await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
