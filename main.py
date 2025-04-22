@@ -346,6 +346,76 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
         sheet.append_row(row)
     except Exception as e:
         send_message(f"❌ Learning Log error: {e}")
+        def place_long(symbol, usd):
+    if has_open_position("LONG"):
+        send_message("⚠️ Уже відкрита LONG позиція")
+        return
+
+    try:
+        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        qty = get_quantity(symbol, usd)
+        if not qty:
+            send_message("❌ Не вдалося розрахувати кількість")
+            return
+
+        tp = round(entry * 1.015, 2)
+        sl = round(entry * 0.992, 2)
+
+        if DRY_RUN:
+            send_message(f"🤖 [DRY_RUN] LONG\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+        else:
+            binance_client.futures_create_order(
+                symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
+            binance_client.futures_create_order(
+                symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
+                stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
+            binance_client.futures_create_order(
+                symbol=symbol, side='SELL', type='STOP_MARKET',
+                stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
+
+            send_message(f"🟢 LONG OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+
+        log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
+        update_stats_sheet()
+
+    except Exception as e:
+        send_message(f"❌ Binance LONG error: {e}")
+
+def place_short(symbol, usd):
+    if has_open_position("SHORT"):
+        send_message("⚠️ Уже відкрита SHORT позиція")
+        return
+
+    try:
+        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        qty = get_quantity(symbol, usd)
+        if not qty:
+            send_message("❌ Не вдалося розрахувати кількість")
+            return
+
+        tp = round(entry * 0.99, 2)
+        sl = round(entry * 1.008, 2)
+
+        if DRY_RUN:
+            send_message(f"🤖 [DRY_RUN] SHORT\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+        else:
+            binance_client.futures_create_order(
+                symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
+            binance_client.futures_create_order(
+                symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
+                stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT')
+            binance_client.futures_create_order(
+                symbol=symbol, side='BUY', type='STOP_MARKET',
+                stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
+
+            send_message(f"🔴 SHORT OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+
+        log_to_sheet("SHORT", entry, tp, sl, qty, None, "GPT сигнал")
+        update_stats_sheet()
+
+    except Exception as e:
+        send_message(f"❌ Binance SHORT error: {e}")
+
 async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing
     uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
