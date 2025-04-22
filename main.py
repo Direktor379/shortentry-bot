@@ -664,6 +664,12 @@ async def webhook(req: Request):
     try:
         data = await req.json()
         signal = data.get("message", "").strip().upper()
+        
+        if signal == "/debug_activity":
+            text = get_gpt_debug_activity_today()
+            send_message(text)
+            return {"ok": True}
+
         send_message(f"📩 Отримано сигнал: {signal}")
 
         if signal not in ["LONG", "SHORT", "BOOSTED_LONG", "BOOSTED_SHORT"]:
