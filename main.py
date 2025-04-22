@@ -227,7 +227,7 @@ def get_recent_trades_and_streak(limit=10):
     except Exception as e:
         send_message(f"❌ Streak error: {e}")
         return "", 0
-def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
+async def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
     try:
         recent_trades, win_streak = get_recent_trades_and_streak()
         stats_summary = get_stats_summary()
@@ -235,7 +235,6 @@ def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
 
         type_upper = type_.upper()
 
-        # Захист від флету + низького обʼєму (крім BOOSTED)
         if is_flat_zone("BTCUSDT") and "BOOSTED" not in type_upper and (volume is None or volume < 300):
             return "SKIP"
 
@@ -266,17 +265,14 @@ Open Interest: {oi_text}
 - LONG / BOOSTED_LONG / SHORT / BOOSTED_SHORT / SKIP
 """
 
-        res = client.chat.completions.create(
+        res = await asyncio.to_thread(
+            client.chat.completions.create,
             model="gpt-4-turbo",
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Ти досвідчений скальп-трейдер. "
-                        "Вибери лише одне слово з цього списку: LONG, BOOSTED_LONG, SHORT, BOOSTED_SHORT або SKIP. "
-                        "Не додавай пояснень. Не пояснюй свій вибір. Відповідай строго лише одним словом."
-                    )
-                },
+                {"role": "system", "content": (
+                    "Ти досвідчений скальп-трейдер. "
+                    "Вибери лише одне слово з цього списку: LONG, BOOSTED_LONG, SHORT, BOOSTED_SHORT або SKIP. "
+                    "Не додавай пояснень. Не пояснюй свій вибір. Відповідай строго лише одним словом.")},
                 {"role": "user", "content": prompt}
             ]
         )
@@ -288,8 +284,6 @@ Open Interest: {oi_text}
     except Exception as e:
         send_message(f"❌ GPT error: {e}")
         return "SKIP"
-# 📒 Learning Log — пояснення втрат і логування GPT
-
 def get_gspread_client():
     try:
         scope = [
