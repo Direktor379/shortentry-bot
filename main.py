@@ -609,7 +609,7 @@ async def monitor_auto_signals():
                 await asyncio.sleep(60)
                 continue
 
-            decision = ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)  
+            decision = await ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)  
             send_message(f"🤖 GPT (auto): {decision} на базі delta {delta:.2f}%")
 
             if decision in ["LONG", "BOOSTED_LONG"]:
@@ -644,7 +644,7 @@ async def webhook(req: Request):
 
         send_message(f"📊 OI: {oi:,.0f} | Volume: {volume} | ΔOI: {delta:.2f}%")
 
-        decision = ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
+        decision = await ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
         send_message(f"🤖 GPT вирішив: {decision}")
 
         if decision in ["LONG", "BOOSTED_LONG"]:
