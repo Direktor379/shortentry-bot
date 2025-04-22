@@ -200,14 +200,22 @@ def get_stats_summary():
 def get_recent_mistakes(limit=5):
     try:
         gclient = get_gspread_client()
-        sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheet("Learning Log")
+        sh = gclient.open_by_key(GOOGLE_SHEET_ID)
+        try:
+            sheet = sh.worksheet("Learning Log")
+        except:
+            # Якщо листа немає — створюємо його з заголовками
+            sheet = sh.add_worksheet(title="Learning Log", rows="1000", cols="10")
+            sheet.append_row(["Time", "Type", "Result", "PnL", "GPT Analysis"])
+            return "❕ Помилки ще не зафіксовані."
+
         data = sheet.get_all_values()[1:]
         mistakes = [row for row in reversed(data) if len(row) >= 5 and row[2].strip().upper() == "LOSS" and row[4].strip()]
-        return "\n".join(f"- {row[4]}" for row in mistakes[:limit])
+        return "\n".join(f"- {row[4]}" for row in mistakes[:limit]) or "❕ Немає нещодавніх помилок."
     except Exception as e:
-        send_message(f"❌ Mistakes error: {e}")
-        return ""
-
+        send_message(f"❌ Mistakes fallback error: {e}")
+        return "❕ GPT тимчасово без памʼяті."
+    
 def get_recent_trades_and_streak(limit=10):
     try:
         gclient = get_gspread_client()
