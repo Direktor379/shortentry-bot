@@ -346,6 +346,19 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
         sheet.append_row(row)
     except Exception as e:
         send_message(f"❌ Learning Log error: {e}")
+        def has_open_position(side):
+    try:
+        positions = binance_client.futures_position_information(symbol="BTCUSDT")
+        for p in positions:
+            qty = float(p["positionAmt"])
+            if side == "LONG" and qty > 0:
+                return True
+            elif side == "SHORT" and qty < 0:
+                return True
+        return False
+    except Exception as e:
+        send_message(f"❌ Position check error: {e}")
+        return False
 def place_long(symbol, usd):
     if has_open_position("LONG"):
         send_message("⚠️ Уже відкрита LONG позиція")
