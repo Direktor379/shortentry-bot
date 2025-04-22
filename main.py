@@ -416,6 +416,7 @@ def place_short(symbol, usd):
 
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
+
 async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing
     uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
