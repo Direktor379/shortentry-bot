@@ -87,6 +87,8 @@ def update_stats_sheet():
         rows = data[1:]
 
         stats = {}
+        streaks = {}
+
         for row in rows:
             if len(row) < 7:
                 continue
@@ -94,26 +96,34 @@ def update_stats_sheet():
             result = row[6].strip().upper()
             if gpt_type not in stats:
                 stats[gpt_type] = {"WIN": 0, "LOSS": 0}
+                streaks[gpt_type] = {"current": 0, "max": 0}
+
             if result == "WIN":
                 stats[gpt_type]["WIN"] += 1
+                streaks[gpt_type]["current"] += 1
+                if streaks[gpt_type]["current"] > streaks[gpt_type]["max"]:
+                    streaks[gpt_type]["max"] = streaks[gpt_type]["current"]
             elif result == "LOSS":
                 stats[gpt_type]["LOSS"] += 1
+                streaks[gpt_type]["current"] = 0
 
-        stat_rows = [["Type", "WIN", "LOSS", "Total", "Winrate %"]]
+        stat_rows = [["Type", "WIN", "LOSS", "Total", "Winrate %", "Max Streak"]]
         for k, v in stats.items():
             total = v["WIN"] + v["LOSS"]
             winrate = round(v["WIN"] / total * 100, 2) if total > 0 else 0
-            stat_rows.append([k, v["WIN"], v["LOSS"], total, winrate])
+            max_streak = streaks[k]["max"]
+            stat_rows.append([k, v["WIN"], v["LOSS"], total, winrate, max_streak])
 
         try:
             stat_sheet = sh.worksheet("Stats")
             stat_sheet.clear()
         except:
-            stat_sheet = sh.add_worksheet(title="Stats", rows="20", cols="5")
+            stat_sheet = sh.add_worksheet(title="Stats", rows="20", cols="6")
 
         stat_sheet.update("A1", stat_rows)
     except Exception as e:
         send_message(f"❌ Stats error: {e}")
+
 def get_latest_news():
     try:
         url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
