@@ -685,7 +685,7 @@ async def webhook(req: Request):
             return {"ok": True}
 
         # 🧪 Примусовий запуск GPT
-       if signal == "/force_check":
+        if signal == "/force_check":
           try:
             send_message("📥 Отримано команду /force_check")
 
