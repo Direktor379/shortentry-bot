@@ -35,6 +35,23 @@ TRADE_USD_AMOUNT = float(os.getenv("TRADE_USD_AMOUNT", 1000))
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"  # 🧪 режим тесту
 
 # 🔌 Ініціалізація клієнтів
+
+# 🔧 Додані відсутні змінні та функції
+trailing_stops = {"LONG": None, "SHORT": None}
+cluster_data = defaultdict(lambda: {"buy": 0, "sell": 0})
+cluster_last_reset = time.time()
+cluster_is_processing = False
+CLUSTER_BUCKET_SIZE = 10  # $10 діапазон
+CLUSTER_INTERVAL = 10  # кожні 10 сек оновлення
+
+def get_quantity(symbol, usd):
+    try:
+        price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        return round(usd / price, 3) if price > 0 else None
+    except Exception as e:
+        send_message(f"❌ Quantity error: {e}")
+        return None
+
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
 client = OpenAI(api_key=OPENAI_API_KEY)
 last_open_interest = None
@@ -178,10 +195,6 @@ def is_flat_zone(symbol="BTCUSDT"):
     except Exception as e:
         send_message(f"❌ Flat zone error: {e}")
         return False
-def get_gspread_client():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("/etc/secrets/credentials.json", scope)
-    return gspread.authorize(creds)
 
 def get_last_trades(limit=10):
     try:
@@ -356,14 +369,6 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
         sheet.append_row(row)
     except Exception as e:
         send_message(f"❌ Learning Log error: {e}")
-        def get_quantity(symbol, usd_amount):
-    try:
-        price = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-        quantity = round(usd_amount / price, 3)
-        return quantity
-    except Exception as e:
-        send_message(f"❌ get_quantity error: {e}")
-        return None
 def has_open_position(side):
     try:
         positions = binance_client.futures_position_information(symbol="BTCUSDT")
@@ -778,4 +783,3 @@ if __name__ == "__main__":
     # Запускаємо FastAPI сервер
     port = int(os.getenv("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
-
