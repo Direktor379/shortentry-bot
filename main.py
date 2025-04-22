@@ -685,25 +685,32 @@ async def webhook(req: Request):
             return {"ok": True}
 
         # 🧪 Примусовий запуск GPT
-        if signal == "/force_check":
-            oi = get_open_interest("BTCUSDT")
-            volume = get_volume("BTCUSDT")
-            news = get_latest_news()
-            delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
-            last_open_interest = oi
+       if signal == "/force_check":
+    try:
+        send_message("📥 Отримано команду /force_check")
 
-            send_message(f"🧪 /force_check → OI: {oi:,.0f} | Volume: {volume} | ΔOI: {delta:.2f}%")
+        oi = get_open_interest("BTCUSDT")
+        volume = get_volume("BTCUSDT")
+        news = get_latest_news()
+        delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
+        last_open_interest = oi
 
-            signal_type = "LONG" if delta > 0 else "SHORT"
-            decision = await ask_gpt_trade_with_all_context(signal_type, news, oi, delta, volume)
-            send_message(f"🤖 GPT (force): {decision} на базі delta {delta:.2f}%")
+        send_message(f"🧪 /force_check → OI: {oi:,.0f} | Volume: {volume} | ΔOI: {delta:.2f}%")
 
-            if decision in ["LONG", "BOOSTED_LONG"]:
-                await asyncio.to_thread(place_long, "BTCUSDT", TRADE_USD_AMOUNT)
-            elif decision in ["SHORT", "BOOSTED_SHORT"]:
-                await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
+        signal_type = "LONG" if delta > 0 else "SHORT"
+        decision = await ask_gpt_trade_with_all_context(signal_type, news, oi, delta, volume)
+        send_message(f"🤖 GPT (force): {decision} на базі delta {delta:.2f}%")
 
-            return {"ok": True}
+        if decision in ["LONG", "BOOSTED_LONG"]:
+            await asyncio.to_thread(place_long, "BTCUSDT", TRADE_USD_AMOUNT)
+        elif decision in ["SHORT", "BOOSTED_SHORT"]:
+            await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
+
+        return {"ok": True}
+
+    except Exception as e:
+        send_message(f"❌ ForceCheck Error: {e}")
+        return {"error": str(e)}
 
         # ✅ Стандартна обробка сигналів з TradingView
         send_message(f"📩 Отримано сигнал: {signal}")
