@@ -621,11 +621,11 @@ async def monitor_cluster_trades():
                             else:
                                send_message("⏳ Пропущено LONG — cooldown не минув")
 
-                           elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
-                           if is_cooldown_passed():
-                              await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
-                           else:
-                              send_message("⏳ Пропущено SHORT — cooldown не минув")
+                            elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
+                            if is_cooldown_passed():
+                               await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
+                            else:
+                               send_message("⏳ Пропущено SHORT — cooldown не минув")
 
 
                     cluster_data.clear()
