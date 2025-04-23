@@ -504,13 +504,13 @@ async def monitor_cluster_trades():
 
                     # Визначаємо кластерний сигнал з урахуванням buy/sell домінації
                     signal = None
-                    if buy_ratio >= 75 and total_buy >= 40:
+                    if buy_ratio >= 85 and total_buy >= 40:
                         signal = "SUPER_BOOSTED_LONG"
-                    elif sell_ratio >= 75 and total_sell >= 40:
+                    elif sell_ratio >= 85 and total_sell >= 40:
                         signal = "SUPER_BOOSTED_SHORT"
-                    elif total_buy >= 30:
+                    elif total_buy >= 50:
                         signal = "BOOSTED_LONG"
-                    elif total_sell >= 30:
+                    elif total_sell >= 50:
                         signal = "BOOSTED_SHORT"
 
                     # Не BOOSTED, але є активність
@@ -646,9 +646,9 @@ async def monitor_auto_signals():
             last_open_interest = oi
 
             # Генеруємо базовий сигнал
-            if delta > 0.05:
+            if delta > 0.2:
                 signal = "LONG"
-            elif delta < -0.05:
+            elif delta < -0.2:
                 signal = "SHORT"
             else:
                 signal = None
