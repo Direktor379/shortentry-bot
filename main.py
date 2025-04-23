@@ -615,19 +615,18 @@ async def monitor_cluster_trades():
                         if "SUPER" in signal:
                             send_message(f"🚀 {signal} кластер: домінація {'BUY' if 'LONG' in signal else 'SELL'} {round(max(buy_ratio, sell_ratio))}%")
 
-                            if decision in ["LONG", "BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
-                                if is_cooldown_passed():
-                                   await asyncio.to_thread(place_long, "BTCUSDT", TRADE_USD_AMOUNT)
-                                else:
-                                   send_message("⏳ Пропущено LONG — cooldown не минув")
-        
-                                elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
-                                if is_cooldown_passed():
-                                   await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
-                                else:
-                                   send_message("⏳ Пропущено SHORT — cooldown не минув")
-
-
+                        if decision in ["LONG", "BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
+                           if is_cooldown_passed():
+                              await asyncio.to_thread(place_long, "BTCUSDT", TRADE_USD_AMOUNT)
+                           else:
+                               send_message("⏳ Пропущено LONG — cooldown не минув")
+                        
+                        if decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
+                           if  is_cooldown_passed():
+                               await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
+                           else:
+                               send_message("⏳ Пропущено SHORT — cooldown не минув")
+                                     
                     cluster_data.clear()
                     cluster_last_reset = now
                     cluster_is_processing = False
