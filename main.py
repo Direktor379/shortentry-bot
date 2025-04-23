@@ -458,6 +458,7 @@ async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing
     uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
     async with websockets.connect(uri) as websocket:
+        last_impulse = {"side": None, "volume": 0, "timestamp": 0}
         trade_buffer = []
         buffer_duration = 5  # секунд
 
@@ -476,10 +477,8 @@ async def monitor_cluster_trades():
                     "timestamp": timestamp
                 })
 
-                # Очистка буфера (лише останні N секунд)
                 trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
 
-                # Кластер по $10
                 bucket = round(price / CLUSTER_BUCKET_SIZE) * CLUSTER_BUCKET_SIZE
                 if is_sell:
                     cluster_data[bucket]['sell'] += qty
@@ -490,19 +489,16 @@ async def monitor_cluster_trades():
                 if now - cluster_last_reset >= CLUSTER_INTERVAL and not cluster_is_processing:
                     cluster_is_processing = True
 
-                    # Аналіз найбільш активного bucket
                     strongest_bucket = max(cluster_data.items(), key=lambda x: x[1]["buy"] + x[1]["sell"])
                     total_buy = strongest_bucket[1]["buy"]
                     total_sell = strongest_bucket[1]["sell"]
-                    total = total_buy + total_sell
 
-                    # BUY/SELL агрегація за останні 5 секунд
                     buy_volume = sum(t["qty"] for t in trade_buffer if not t["is_sell"])
                     sell_volume = sum(t["qty"] for t in trade_buffer if t["is_sell"])
                     buy_ratio = (buy_volume / (buy_volume + sell_volume)) * 100 if (buy_volume + sell_volume) > 0 else 0
                     sell_ratio = 100 - buy_ratio
 
-                    # Визначаємо кластерний сигнал з урахуванням buy/sell домінації
+                    # 🔍 Логіка сигналу
                     signal = None
                     if buy_ratio >= 90 and total_buy >= 80:
                         signal = "SUPER_BOOSTED_LONG"
@@ -513,22 +509,42 @@ async def monitor_cluster_trades():
                     elif total_sell >= 65:
                         signal = "BOOSTED_SHORT"
 
-                    # Не BOOSTED, але є активність
+                    # Не BOOSTED, але активність
                     if signal is None and (total_buy > 40 or total_sell > 40):
                         send_message(
                             f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED"
                         )
-                        if total_sell > total_buy:
+                        if total_sell > total_buy and total_sell >= 45:
                             signal = "BOOSTED_SHORT"
-                        elif total_buy > total_sell:
+                        elif total_buy > total_sell and total_buy >= 45:
                             signal = "BOOSTED_LONG"
 
+                    # 🧠 Блокуємо протилежний вхід після імпульсу
+                    if (
+                        signal and last_impulse["side"] == "BUY" and signal.startswith("SHORT") and
+                        last_impulse["volume"] >= 60 and now - last_impulse["timestamp"] < 30
+                    ):
+                        send_message("⏳ Відхилено SHORT — щойно був великий BUY")
+                        signal = None
+                    elif (
+                        signal and last_impulse["side"] == "SELL" and signal.startswith("LONG") and
+                        last_impulse["volume"] >= 60 and now - last_impulse["timestamp"] < 30
+                    ):
+                        send_message("⏳ Відхилено LONG — щойно був великий SELL")
+                        signal = None
+
+                    # ✅ Запам’ятовуємо імпульс
+                    if signal in ["BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
+                        last_impulse = {"side": "BUY", "volume": total_buy, "timestamp": now}
+                    elif signal in ["BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
+                        last_impulse = {"side": "SELL", "volume": total_sell, "timestamp": now}
+
+                    # 🚀 GPT-аналіз
                     if signal:
                         news = get_latest_news()
                         oi = get_open_interest("BTCUSDT")
                         volume = get_volume("BTCUSDT")
 
-                        # Додаємо напрям кластера в prompt
                         cluster_direction_info = f"Кластерний напрям: Buy {buy_ratio:.1f}%, Sell {sell_ratio:.1f}%"
 
                         decision = await ask_gpt_trade_with_all_context(
