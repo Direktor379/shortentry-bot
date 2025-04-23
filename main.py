@@ -266,7 +266,7 @@ async def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
 
         type_upper = type_.upper()
 
-        if is_flat_zone("BTCUSDT") and "BOOSTED" not in type_upper and (volume is None or volume < 300):
+        if is_flat_zone("BTCUSDT") and "BOOSTED" not in type_upper and (volume is None or volume < 20):
             return "SKIP"
 
         oi_text = f"{oi:,.0f}" if oi is not None else "невідомо"
