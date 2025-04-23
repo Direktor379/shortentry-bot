@@ -760,31 +760,12 @@ async def monitor_closures():
 # ✅ Запуск моніторів GPT при старті FastAPI
 @app.on_event("startup")
 async def start_all_monitors():
-    asyncio.create_task(monitor_cluster_trades())
-    asyncio.create_task(monitor_trailing_stops())
-    asyncio.create_task(monitor_auto_signals())
-    asyncio.create_task(monitor_closures())
+    try:
+        asyncio.create_task(monitor_cluster_trades())
+        asyncio.create_task(monitor_trailing_stops())
+        asyncio.create_task(monitor_auto_signals())
+        asyncio.create_task(monitor_closures())
+        send_message("✅ GPT монітори запущено успішно.")
+    except Exception as e:
+        send_message(f"❌ Помилка при запуску GPT-моніторів: {e}")
 
-    def start_cluster():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(monitor_cluster_trades())
-
-    def start_trailing():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(monitor_trailing_stops())
-
-    def start_auto_signals():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(monitor_auto_signals())
-
-    # Запускаємо всі фонові процеси
-    threading.Thread(target=start_cluster).start()
-    threading.Thread(target=start_trailing).start()
-    threading.Thread(target=start_auto_signals).start()
-
-    # Запускаємо FastAPI сервер
-    port = int(os.getenv("PORT", 10000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
