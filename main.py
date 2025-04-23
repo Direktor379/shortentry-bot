@@ -519,33 +519,35 @@ async def monitor_cluster_trades():
                         elif total_buy > total_sell and total_buy >= 45:
                             signal = "BOOSTED_LONG"
 
-                   # 🛑 Якщо позиція вже відкрита — не надсилаємо повідомлення, просто моніторимо
+                  # 🛑 Якщо позиція вже відкрита — не надсилаємо повідомлення, просто моніторимо
                     if (
-                       (signal.startswith("LONG") and has_open_position("LONG")) or
-                       (signal.startswith("SHORT") and has_open_position("SHORT"))
+                       signal is not None and (
+                        (signal.startswith("LONG") and has_open_position("LONG")) or
+                        (signal.startswith("SHORT") and has_open_position("SHORT"))
+                      )
                     ):
                        cluster_data.clear()
                        cluster_last_reset = time.time()
                        cluster_is_processing = False
                        continue
 
-                 # 🧠 Блокуємо протилежний вхід після імпульсу (якщо не минуло 30 сек)
-                    if (
-                       signal and (
-                           (signal.startswith("LONG") and has_open_position("LONG")) or
-                           (signal.startswith("SHORT") and has_open_position("SHORT"))
-                      )
-                   ):
-
+                # 🧠 Блокуємо протилежний вхід після імпульсу (якщо не минуло 30 сек)
+                  if (
+                     signal is not None and
+                     last_impulse["side"] == "BUY" and signal.startswith("SHORT") and
+                     last_impulse["volume"] >= 60 and now - last_impulse["timestamp"] < 30
+                 ):
                      send_message("⏳ Відхилено SHORT — щойно був великий BUY")
                      signal = None
 
-                    elif (
-                     signal and last_impulse["side"] == "SELL" and signal.startswith("LONG") and
-                     last_impulse["volume"] >= 60 and now - last_impulse["timestamp"] < 30
-                  ):
-                     send_message("⏳ Відхилено LONG — щойно був великий SELL")
-                     signal = None
+                 elif (
+                      signal is not None and
+                      last_impulse["side"] == "SELL" and signal.startswith("LONG") and
+                      last_impulse["volume"] >= 60 and now - last_impulse["timestamp"] < 30
+                ):
+                      send_message("⏳ Відхилено LONG — щойно був великий SELL")
+                      signal = None
+
 
 
 
