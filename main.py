@@ -757,8 +757,13 @@ async def monitor_closures():
         await asyncio.sleep(60)
 # 🚀 Запуск FastAPI + кластер + трейлінг + автоаналіз
 
-if __name__ == "__main__":
-    import uvicorn
+# ✅ Запуск моніторів GPT при старті FastAPI
+@app.on_event("startup")
+async def start_all_monitors():
+    asyncio.create_task(monitor_cluster_trades())
+    asyncio.create_task(monitor_trailing_stops())
+    asyncio.create_task(monitor_auto_signals())
+    asyncio.create_task(monitor_closures())
 
     def start_cluster():
         loop = asyncio.new_event_loop()
