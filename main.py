@@ -606,62 +606,72 @@ async def monitor_trailing_stops():
     while True:
         try:
             for side in ["LONG", "SHORT"]:
-                pos = next((p for p in binance_client.futures_position_information(symbol="BTCUSDT")
-                            if float(p["positionAmt"]) != 0 and
-                               ((side == "LONG" and float(p["positionAmt"]) > 0) or
-                                (side == "SHORT" and float(p["positionAmt"]) < 0))), None)
+                positions = binance_client.futures_position_information(symbol="BTCUSDT")
+                pos = next((p for p in positions if
+                            ((side == "LONG" and float(p["positionAmt"]) > 0) or
+                             (side == "SHORT" and float(p["positionAmt"]) < 0))), None)
 
                 if pos:
                     entry = float(pos["entryPrice"])
+                    qty = abs(float(pos["positionAmt"]))
                     mark = float(binance_client.futures_mark_price(symbol="BTCUSDT")["markPrice"])
                     profit_pct = (mark - entry) / entry * 100 if side == "LONG" else (entry - mark) / entry * 100
 
-                    # Стоп у беззбиток при +0.5%
-                    if profit_pct >= 0.5 and trailing_stops[side] is None:
-                        new_sl = round(entry, 2)
-                        trailing_stops[side] = new_sl
-                        send_message(f"🛡 {side}: Стоп у беззбитку {new_sl} (+{profit_pct:.2f}%)")
+                    # Трейлінг логіка
+                    new_sl = None
+                    if profit_pct >= 0.8:
+                        new_sl = round(entry * (1 + 0.005 if side == "LONG" else 1 - 0.005), 2)
+                    elif profit_pct >= 0.5:
+                        new_sl = round(entry * (1 + 0.003 if side == "LONG" else 1 - 0.003), 2)
+                    elif profit_pct >= 0.3:
+                        new_sl = round(entry * (1 - 0.001 if side == "LONG" else 1 + 0.001), 2)
 
-                        if not DRY_RUN:
-                            cancel_existing_stop_order(side)
-                            binance_client.futures_create_order(
-                                symbol="BTCUSDT",
-                                side='SELL' if side == "LONG" else 'BUY',
-                                type='STOP_MARKET',
-                                stopPrice=new_sl,
-                                closePosition=True,
-                                timeInForce="GTC",
-                                positionSide=side
-                            )
-
-                    # Трейлінг при +1.0% і більше
-                    if trailing_stops[side] and profit_pct >= 1.0:
-                        new_sl = (
-                            round(entry * (1 + (profit_pct - 1) / 100), 2)
-                            if side == "LONG"
-                            else round(entry * (1 - (profit_pct - 1) / 100), 2)
+                    if new_sl:
+                        send_message(f"🔁 {side}: Новий трейлінг-стоп {new_sl} (+{profit_pct:.2f}%)")
+                        cancel_existing_stop_order(side)
+                        binance_client.futures_create_order(
+                            symbol="BTCUSDT",
+                            side='SELL' if side == "LONG" else 'BUY',
+                            type='STOP_MARKET',
+                            stopPrice=new_sl,
+                            closePosition=True,
+                            timeInForce="GTC",
+                            positionSide=side
                         )
 
-                        if new_sl != trailing_stops[side]:
-                            trailing_stops[side] = new_sl
-                            send_message(f"🔁 {side}: Новий трейлінг-стоп {new_sl} (+{profit_pct:.2f}%)")
+                    # Часткове закриття при TP
+                    if profit_pct >= 0.9 and qty >= 0.0002:
+                        qty_close = round(qty * 0.8, 4)
+                        qty_remain = round(qty - qty_close, 4)
 
-                            if not DRY_RUN:
-                                cancel_existing_stop_order(side)
-                                binance_client.futures_create_order(
-                                    symbol="BTCUSDT",
-                                    side='SELL' if side == "LONG" else 'BUY',
-                                    type='STOP_MARKET',
-                                    stopPrice=new_sl,
-                                    closePosition=True,
-                                    timeInForce="GTC",
-                                    positionSide=side
-                                )
+                        binance_client.futures_create_order(
+                            symbol="BTCUSDT",
+                            side='SELL' if side == "LONG" else 'BUY',
+                            type='MARKET',
+                            quantity=qty_close,
+                            positionSide=side
+                        )
+                        send_message(f"💰 {side}: Часткове закриття 80% позиції")
+
+                        # Stop на залишок у +0.5%
+                        breakeven_sl = round(entry * (1 + 0.005 if side == "LONG" else 1 - 0.005), 2)
+                        cancel_existing_stop_order(side)
+                        binance_client.futures_create_order(
+                            symbol="BTCUSDT",
+                            side='SELL' if side == "LONG" else 'BUY',
+                            type='STOP_MARKET',
+                            stopPrice=breakeven_sl,
+                            quantity=qty_remain,
+                            timeInForce="GTC",
+                            positionSide=side
+                        )
+                        send_message(f"🛡 Стоп на залишок {qty_remain} поставлено на {breakeven_sl}")
 
         except Exception as e:
             send_message(f"⚠️ Trailing error: {e}")
 
-        await asyncio.sleep(15)
+        await asyncio.sleep(10)
+
 # 🤖 Автоматичний аналіз без сигналу (щохвилини)
 
 async def monitor_auto_signals():
