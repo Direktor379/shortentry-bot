@@ -537,7 +537,7 @@ async def monitor_cluster_trades():
                      send_message("⏳ Відхилено SHORT — щойно був великий BUY")
                      signal = None
 
-                  elif (
+                    elif (
                      signal and last_impulse["side"] == "SELL" and signal.startswith("LONG") and
                      last_impulse["volume"] >= 60 and now - last_impulse["timestamp"] < 30
                   ):
