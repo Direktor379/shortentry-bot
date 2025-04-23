@@ -384,6 +384,14 @@ def has_open_position(side):
     except Exception as e:
         send_message(f"❌ Position check error: {e}")
         return False
+        # 🔁 Перевірка cooldown між входами
+def is_cooldown_passed():
+    global last_trade_time
+    now = time.time()
+    if now - last_trade_time >= COOLDOWN_SECONDS:
+        last_trade_time = now
+        return True
+    return False
 def place_long(symbol, usd):
     if has_open_position("SHORT"):
         qty_to_close = get_current_position_qty("SHORT")
@@ -608,9 +616,17 @@ async def monitor_cluster_trades():
                             send_message(f"🚀 {signal} кластер: домінація {'BUY' if 'LONG' in signal else 'SELL'} {round(max(buy_ratio, sell_ratio))}%")
 
                         if decision in ["LONG", "BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
-                            await asyncio.to_thread(place_long, "BTCUSDT", TRADE_USD_AMOUNT)
-                        elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
-                            await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
+                            if is_cooldown_passed():
+                               await asyncio.to_thread(place_long, "BTCUSDT", TRADE_USD_AMOUNT)
+                            else:
+                               send_message("⏳ Пропущено LONG — cooldown не минув")
+
+                           elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
+                           if is_cooldown_passed():
+                              await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
+                           else:
+                              send_message("⏳ Пропущено SHORT — cooldown не минув")
+
 
                     cluster_data.clear()
                     cluster_last_reset = now
