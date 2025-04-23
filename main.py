@@ -383,6 +383,30 @@ def has_open_position(side):
         send_message(f"❌ Position check error: {e}")
         return False
 def place_long(symbol, usd):
+    if has_open_position("SHORT"):
+        qty_to_close = get_current_position_qty("SHORT")
+        if qty_to_close > 0:
+            if not DRY_RUN:
+                cancel_existing_stop_order("SHORT")
+                binance_client.futures_create_order(
+                    symbol=symbol, side='BUY', type='MARKET',
+                    quantity=qty_to_close, reduceOnly=True, positionSide='SHORT'
+                )
+            send_message("🔁 Закрито SHORT перед LONG")
+def get_current_position_qty(side):
+    try:
+        positions = binance_client.futures_position_information(symbol="BTCUSDT")
+        for p in positions:
+            qty = float(p["positionAmt"])
+            if side == "LONG" and qty > 0:
+                return round(qty, 3)
+            elif side == "SHORT" and qty < 0:
+                return round(abs(qty), 3)
+        return 0
+    except Exception as e:
+        send_message(f"❌ Qty read error: {e}")
+        return 0
+        
     if has_open_position("LONG"):
         send_message("⚠️ Уже відкрита LONG позиція")
         return
@@ -394,22 +418,23 @@ def place_long(symbol, usd):
             send_message("❌ Не вдалося розрахувати кількість")
             return
 
-        tp = round(entry * 1.015, 2)
-        sl = round(entry * 0.992, 2)
+        tp = round(entry * 1.009, 2)
+        sl = round(entry * 0.995, 2)
 
+        cancel_existing_stop_order("LONG")
 
         if DRY_RUN:
             send_message(f"🤖 [DRY_RUN] LONG\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
         else:
-            binance_client.futures_create_order(
-                symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
+            binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
             binance_client.futures_create_order(
                 symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
-                stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG')
+                stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG'
+            )
             binance_client.futures_create_order(
                 symbol=symbol, side='SELL', type='STOP_MARKET',
-                stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG')
-
+                stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG'
+            )
             send_message(f"🟢 LONG OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
 
         log_to_sheet("LONG", entry, tp, sl, qty, None, "GPT сигнал")
@@ -418,8 +443,18 @@ def place_long(symbol, usd):
     except Exception as e:
         send_message(f"❌ Binance LONG error: {e}")
 
-
 def place_short(symbol, usd):
+    if has_open_position("LONG"):
+        qty_to_close = get_current_position_qty("LONG")
+        if qty_to_close > 0:
+            if not DRY_RUN:
+                cancel_existing_stop_order("LONG")
+                binance_client.futures_create_order(
+                    symbol=symbol, side='SELL', type='MARKET',
+                    quantity=qty_to_close, reduceOnly=True, positionSide='LONG'
+                )
+            send_message("🔁 Закрито LONG перед SHORT")
+
     if has_open_position("SHORT"):
         send_message("⚠️ Уже відкрита SHORT позиція")
         return
@@ -431,21 +466,23 @@ def place_short(symbol, usd):
             send_message("❌ Не вдалося розрахувати кількість")
             return
 
-        tp = round(entry * 0.99, 2)
-        sl = round(entry * 1.008, 2)
+        tp = round(entry * 0.991, 2)
+        sl = round(entry * 1.005, 2)
+
+        cancel_existing_stop_order("SHORT")
 
         if DRY_RUN:
             send_message(f"🤖 [DRY_RUN] SHORT\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
         else:
-            binance_client.futures_create_order(
-                symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
+            binance_client.futures_create_order(symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
             binance_client.futures_create_order(
                 symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
-                stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT')
+                stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT'
+            )
             binance_client.futures_create_order(
                 symbol=symbol, side='BUY', type='STOP_MARKET',
-                stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT')
-
+                stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT'
+            )
             send_message(f"🔴 SHORT OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
 
         log_to_sheet("SHORT", entry, tp, sl, qty, None, "GPT сигнал")
