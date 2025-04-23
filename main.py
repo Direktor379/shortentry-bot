@@ -531,9 +531,12 @@ async def monitor_cluster_trades():
 
                  # 🧠 Блокуємо протилежний вхід після імпульсу (якщо не минуло 30 сек)
                     if (
-                     signal and last_impulse["side"] == "BUY" and signal.startswith("SHORT") and
-                     last_impulse["volume"] >= 60 and now - last_impulse["timestamp"] < 30
-                  ):
+                       signal and (
+                           (signal.startswith("LONG") and has_open_position("LONG")) or
+                           (signal.startswith("SHORT") and has_open_position("SHORT"))
+                      )
+                   ):
+
                      send_message("⏳ Відхилено SHORT — щойно був великий BUY")
                      signal = None
 
