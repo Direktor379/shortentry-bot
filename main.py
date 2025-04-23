@@ -393,20 +393,9 @@ def place_long(symbol, usd):
                     quantity=qty_to_close, reduceOnly=True, positionSide='SHORT'
                 )
             send_message("🔁 Закрито SHORT перед LONG")
-def get_current_position_qty(side):
-    try:
-        positions = binance_client.futures_position_information(symbol="BTCUSDT")
-        for p in positions:
-            qty = float(p["positionAmt"])
-            if side == "LONG" and qty > 0:
-                return round(qty, 3)
-            elif side == "SHORT" and qty < 0:
-                return round(abs(qty), 3)
-        return 0
-    except Exception as e:
-        send_message(f"❌ Qty read error: {e}")
-        return 0
-        
+        else:
+            send_message("⚠️ SHORT позиція вже закрита — не надсилаємо reduceOnly")
+
     if has_open_position("LONG"):
         send_message("⚠️ Уже відкрита LONG позиція")
         return
@@ -454,6 +443,8 @@ def place_short(symbol, usd):
                     quantity=qty_to_close, reduceOnly=True, positionSide='LONG'
                 )
             send_message("🔁 Закрито LONG перед SHORT")
+        else:
+            send_message("⚠️ LONG позиція вже закрита — не надсилаємо reduceOnly")
 
     if has_open_position("SHORT"):
         send_message("⚠️ Уже відкрита SHORT позиція")
