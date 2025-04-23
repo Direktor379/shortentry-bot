@@ -22,7 +22,9 @@ app = FastAPI()
 @app.get("/")
 async def healthcheck():
     return {"status": "running"}
-
+# 🔁 Cooldown між входами (щоб не спамити)
+last_trade_time = 0
+COOLDOWN_SECONDS = 90
 # 🔐 Змінні оточення
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
