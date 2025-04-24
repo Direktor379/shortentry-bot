@@ -188,6 +188,28 @@ def get_candle_summary(symbol="BTCUSDT", interval="1m", limit=5):
     except Exception as e:
         send_message(f"❌ Candle summary error: {e}")
         return "⚠️ Дані свічок недоступні"
+def get_orderbook_snapshot(symbol="BTCUSDT", depth=50):
+    try:
+        depth_data = binance_client.futures_order_book(symbol=symbol, limit=depth)
+        bids = depth_data["bids"]
+        asks = depth_data["asks"]
+
+        max_bid = max(float(b[1]) for b in bids)
+        max_ask = max(float(a[1]) for a in asks)
+
+        bid_wall = next((b for b in bids if float(b[1]) > max_bid * 0.7), None)
+        ask_wall = next((a for a in asks if float(a[1]) > max_ask * 0.7), None)
+
+        text = ""
+        if ask_wall:
+            text += f"🟥 Sell wall: {ask_wall[0]} ({round(float(ask_wall[1]), 1)} BTC)\n"
+        if bid_wall:
+            text += f"🟦 Buy wall: {bid_wall[0]} ({round(float(bid_wall[1]), 1)} BTC)\n"
+
+        return text.strip() or "⚠️ Стін не знайдено"
+    except Exception as e:
+        send_message(f"❌ Orderbook error: {e}")
+        return "⚠️ Дані про стіни недоступні"
 
 def calculate_vwap(symbol="BTCUSDT", interval="1m", limit=10):
     try:
