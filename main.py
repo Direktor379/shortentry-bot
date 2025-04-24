@@ -622,6 +622,30 @@ async def monitor_cluster_trades():
                     strongest_bucket = max(cluster_data.items(), key=lambda x: x[1]["buy"] + x[1]["sell"])
                     total_buy = strongest_bucket[1]["buy"]
                     total_sell = strongest_bucket[1]["sell"]
+                # 📊 GPT-свічковий аналіз перед входом
+                candles = binance_client.futures_klines(symbol="BTCUSDT", interval="1m", limit=1)
+                last_candle = candles[-1]
+                candle_dict = {
+                    "open": last_candle[1],
+                    "high": last_candle[2],
+                    "low": last_candle[3],
+                    "close": last_candle[4],
+                    "volume": last_candle[5]
+                }
+                vwap_now = calculate_vwap("BTCUSDT")
+                
+                gpt_candle_result = analyze_candle_gpt(
+                    candle=candle_dict,
+                    vwap=vwap_now,
+                    cluster_buy=total_buy,
+                    cluster_sell=total_sell
+                )
+                
+                if gpt_candle_result["decision"] == "SKIP":
+                    cluster_data.clear()
+                    cluster_last_reset = time.time()
+                    cluster_is_processing = False
+                    continue
 
                     buy_volume = sum(t["qty"] for t in trade_buffer if not t["is_sell"])
                     sell_volume = sum(t["qty"] for t in trade_buffer if t["is_sell"])
