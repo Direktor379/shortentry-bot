@@ -197,6 +197,73 @@ def is_flat_zone(symbol="BTCUSDT"):
     except Exception as e:
         send_message(f"❌ Flat zone error: {e}")
         return False
+def analyze_candle_gpt(candle, vwap, cluster_buy, cluster_sell, support_level=None, resistance_level=None):
+    try:
+        open_, high, low, close, volume = map(float, [
+            candle["open"], candle["high"], candle["low"], candle["close"], candle["volume"]
+        ])
+        body = abs(close - open_)
+        wick = (high - low) - body
+        tail_ratio = round(wick / body, 2) if body else 0
+        direction = "🟢" if close > open_ else "🔴"
+
+        if wick > body * 1.5:
+            shape = "🐍 хвіст"
+        elif body > wick * 2:
+            shape = "🚀 імпульс"
+        else:
+            shape = "💤 звичайна"
+
+        is_near_support = bool(support_level and abs(close - support_level) / close < 0.002)
+        is_near_resistance = bool(resistance_level and abs(close - resistance_level) / close < 0.002)
+
+        support_text = "🟦 Біля підтримки" if is_near_support else ""
+        resistance_text = "🟥 Біля опору" if is_near_resistance else ""
+
+        prompt = f"""
+Свічка BTCUSDT (1 хв):
+- Напрям: {direction} {shape} ({round(open_, 1)} → {round(close, 1)})
+- Обʼєм: ${round(volume):,}
+- Кластери: buy ${round(cluster_buy):,}, sell ${round(cluster_sell):,}
+- VWAP: {round(vwap, 1)}, close: {round(close, 1)}
+- Tail/body ratio: {tail_ratio}
+- {support_text}
+- {resistance_text}
+
+Вибери одне:
+SKIP — нічого не робити  
+NORMAL — можливо, але не впевнено  
+BOOSTED — потужний імпульс
+
+Відповідь строго у форматі: SKIP / NORMAL / BOOSTED — і коротке пояснення.
+"""
+
+        response = client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {"role": "system", "content": "Ти досвідчений трейдинг-аналітик. Відповідай лише одним із слів: SKIP / NORMAL / BOOSTED. Додай коротке пояснення."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+        )
+
+        reply = response.choices[0].message.content.strip()
+        decision = reply.split()[0].upper()
+
+        if decision not in ["SKIP", "NORMAL", "BOOSTED"]:
+            decision = "SKIP"
+            reply = f"SKIP — невідома відповідь від GPT: {reply}"
+
+        return {
+            "decision": decision,
+            "reason": reply
+        }
+
+    except Exception as e:
+        return {
+            "decision": "SKIP",
+            "reason": f"GPT error: {e}"
+        }
 
 def get_last_trades(limit=10):
     try:
@@ -555,73 +622,6 @@ async def monitor_cluster_trades():
                     strongest_bucket = max(cluster_data.items(), key=lambda x: x[1]["buy"] + x[1]["sell"])
                     total_buy = strongest_bucket[1]["buy"]
                     total_sell = strongest_bucket[1]["sell"]
-def analyze_candle_gpt(candle, vwap, cluster_buy, cluster_sell, support_level=None, resistance_level=None):
-    try:
-        open_, high, low, close, volume = map(float, [
-            candle["open"], candle["high"], candle["low"], candle["close"], candle["volume"]
-        ])
-        body = abs(close - open_)
-        wick = (high - low) - body
-        tail_ratio = round(wick / body, 2) if body else 0
-        direction = "🟢" if close > open_ else "🔴"
-
-        if wick > body * 1.5:
-            shape = "🐍 хвіст"
-        elif body > wick * 2:
-            shape = "🚀 імпульс"
-        else:
-            shape = "💤 звичайна"
-
-        is_near_support = bool(support_level and abs(close - support_level) / close < 0.002)
-        is_near_resistance = bool(resistance_level and abs(close - resistance_level) / close < 0.002)
-
-        support_text = "🟦 Біля підтримки" if is_near_support else ""
-        resistance_text = "🟥 Біля опору" if is_near_resistance else ""
-
-        prompt = f"""
-Свічка BTCUSDT (1 хв):
-- Напрям: {direction} {shape} ({round(open_, 1)} → {round(close, 1)})
-- Обʼєм: ${round(volume):,}
-- Кластери: buy ${round(cluster_buy):,}, sell ${round(cluster_sell):,}
-- VWAP: {round(vwap, 1)}, close: {round(close, 1)}
-- Tail/body ratio: {tail_ratio}
-- {support_text}
-- {resistance_text}
-
-Вибери одне:
-SKIP — нічого не робити  
-NORMAL — можливо, але не впевнено  
-BOOSTED — потужний імпульс
-
-Відповідь строго у форматі: SKIP / NORMAL / BOOSTED — і коротке пояснення.
-"""
-
-        response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[
-                {"role": "system", "content": "Ти досвідчений трейдинг-аналітик. Відповідай лише одним із слів: SKIP / NORMAL / BOOSTED. Додай коротке пояснення."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,
-        )
-
-        reply = response.choices[0].message.content.strip()
-        decision = reply.split()[0].upper()
-
-        if decision not in ["SKIP", "NORMAL", "BOOSTED"]:
-            decision = "SKIP"
-            reply = f"SKIP — невідома відповідь від GPT: {reply}"
-
-        return {
-            "decision": decision,
-            "reason": reply
-        }
-
-    except Exception as e:
-        return {
-            "decision": "SKIP",
-            "reason": f"GPT error: {e}"
-        }
 
                     buy_volume = sum(t["qty"] for t in trade_buffer if not t["is_sell"])
                     sell_volume = sum(t["qty"] for t in trade_buffer if t["is_sell"])
@@ -695,11 +695,15 @@ BOOSTED — потужний імпульс
 
                         cluster_direction_info = f"Кластерний напрям: Buy {buy_ratio:.1f}%, Sell {sell_ratio:.1f}%"
 
+                        candles = get_candle_summary("BTCUSDT")
+                        walls = get_orderbook_snapshot("BTCUSDT")
+                        
                         decision = await ask_gpt_trade_with_all_context(
                             signal,
-                            f"{cluster_direction_info}\n\n{news}",
+                            f"{cluster_direction_info}\n\nСвічки:\n{candles}\n\nСтіни:\n{walls}\n\n{news}",
                             oi, 0, volume
                         )
+
 
                         send_message(f"💥 {signal} — кластер {strongest_bucket[0]} | Buy: {round(total_buy)}, Sell: {round(total_sell)}")
                         send_message(f"🤖 GPT кластер: {decision} | {cluster_direction_info}")
