@@ -396,8 +396,6 @@ def get_current_position_qty(side):
         send_message(f"❌ Position qty error: {e}")
         return 0
 
-        send_message(f"❌ Position check error: {e}")
-        return False
         # 🔁 Перевірка cooldown між входами
 def is_cooldown_passed():
     global last_trade_time
