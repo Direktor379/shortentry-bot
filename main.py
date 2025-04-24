@@ -675,7 +675,7 @@ async def monitor_trailing_stops():
                        if trailing_stops[side] == new_sl:
                            continue  # ⛔️ Пропускаємо — такий стоп уже стоїть
 
-                        trailing_stops[side] = new_sl  # ✅ Оновлюємо тільки, якщо справді новий
+                       trailing_stops[side] = new_sl  # ✅ Оновлюємо тільки, якщо справді новий
                         
                         # send_message(f"🔁 {side}: Новий трейлінг-стоп {new_sl} (+{profit_pct:.2f}%)")
                         cancel_existing_stop_order(side)
