@@ -682,7 +682,7 @@ async def monitor_trailing_stops():
                          # send_message(f"🔁 {side}: Новий трейлінг-стоп {new_sl} (+{profit_pct:.2f}%)")
                           cancel_existing_stop_order(side)
 
-                         binance_client.futures_create_order(
+                          binance_client.futures_create_order(
                             symbol="BTCUSDT",
                             side='SELL' if side == "LONG" else 'BUY',
                             type='STOP_MARKET',
