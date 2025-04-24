@@ -168,6 +168,26 @@ def get_volume(symbol="BTCUSDT"):
     except Exception as e:
         send_message(f"❌ Volume error: {e}")
         return None
+def get_candle_summary(symbol="BTCUSDT", interval="1m", limit=5):
+    try:
+        candles = binance_client.futures_klines(symbol=symbol, interval=interval, limit=limit)
+        summary = []
+        for c in candles:
+            open_, high, low, close = map(float, [c[1], c[2], c[3], c[4]])
+            direction = "🟢" if close > open_ else "🔴"
+            body = abs(close - open_)
+            wick = (high - low) - body
+            if wick > body * 1.5:
+                shape = "🐍 хвіст"
+            elif body > wick * 2:
+                shape = "🚀 імпульс"
+            else:
+                shape = "💤 звичайна"
+            summary.append(f"{direction} {shape} (від {round(open_, 1)} до {round(close, 1)})")
+        return "\n".join(summary)
+    except Exception as e:
+        send_message(f"❌ Candle summary error: {e}")
+        return "⚠️ Дані свічок недоступні"
 
 def calculate_vwap(symbol="BTCUSDT", interval="1m", limit=10):
     try:
