@@ -672,15 +672,17 @@ async def monitor_trailing_stops():
                         new_sl = round(entry * (1 - 0.001 if side == "LONG" else 1 + 0.001), 2)
 
                     if new_sl:
-                        if trailing_stops[side] == new_sl:
-                            continue  # ⛔️ Пропускаємо — такий стоп уже стоїть
+                       if (
+                          trailing_stops[side] is None or
+                          (side == "LONG" and new_sl > trailing_stops[side]) or
+                          (side == "SHORT" and new_sl < trailing_stops[side])
+                       ):
+                          trailing_stops[side] = new_sl  # ✅ Оновлюємо тільки, якщо новий стоп кращий
+                    
+                         # send_message(f"🔁 {side}: Новий трейлінг-стоп {new_sl} (+{profit_pct:.2f}%)")
+                         cancel_existing_stop_order(side)
 
-                        trailing_stops[side] = new_sl  # ✅ Оновлюємо тільки, якщо справді новий
-
-                        # send_message(f"🔁 {side}: Новий трейлінг-стоп {new_sl} (+{profit_pct:.2f}%)")
-                        cancel_existing_stop_order(side)
-
-                        binance_client.futures_create_order(
+                         binance_client.futures_create_order(
                             symbol="BTCUSDT",
                             side='SELL' if side == "LONG" else 'BUY',
                             type='STOP_MARKET',
@@ -689,6 +691,7 @@ async def monitor_trailing_stops():
                             timeInForce="GTC",
                             positionSide=side
                         )
+
 
 
                     # Часткове закриття при TP
