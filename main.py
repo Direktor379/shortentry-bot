@@ -663,15 +663,17 @@ async def monitor_cluster_trades():
                 elif total_sell >= 65:
                     signal = "BOOSTED_SHORT"
 
-                    # Не BOOSTED, але активність
-                    if signal is None and (total_buy > 40 or total_sell > 40):
-                        send_message(
-                            f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED"
-                        )
-                        if total_sell > total_buy and total_sell >= 45:
-                            signal = "BOOSTED_SHORT"
-                        elif total_buy > total_sell and total_buy >= 45:
-                            signal = "BOOSTED_LONG"
+                # Не BOOSTED, але активність
+                if signal is None and (total_buy > 40 or total_sell > 40):
+                    send_message(
+                        f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED"
+                    )
+                   if total_sell > total_buy and total_sell >= 45:
+                       signal = "BOOSTED_SHORT"
+                   elif total_buy > total_sell and total_buy >= 45:
+                       signal = "BOOSTED_LONG"
+
+
 
                   # 🛑 Якщо позиція вже відкрита — не надсилаємо повідомлення, просто моніторимо
                     if (
