@@ -396,7 +396,8 @@ def get_current_position_qty(side):
         send_message(f"❌ Position qty error: {e}")
         return 0
 
-        # 🔁 Перевірка cooldown між входами
+
+# 🔁 Перевірка cooldown між входами
 def is_cooldown_passed():
     global last_trade_time
     now = time.time()
@@ -404,6 +405,8 @@ def is_cooldown_passed():
         last_trade_time = now
         return True
     return False
+
+
 def place_long(symbol, usd):
     if has_open_position("SHORT"):
         qty_to_close = get_current_position_qty("SHORT")
@@ -411,12 +414,17 @@ def place_long(symbol, usd):
             if not DRY_RUN:
                 cancel_existing_stop_order("SHORT")
                 binance_client.futures_create_order(
-                    symbol=symbol, side='BUY', type='MARKET',
-                    quantity=qty_to_close, reduceOnly=True, positionSide='SHORT'
+                    symbol=symbol,
+                    side='BUY',
+                    type='MARKET',
+                    quantity=qty_to_close,
+                    reduceOnly=True,
+                    positionSide='SHORT'
                 )
             send_message("🔁 Закрито SHORT перед LONG")
         else:
             send_message("⚠️ SHORT позиція вже закрита — не надсилаємо reduceOnly")
+
 
     if has_open_position("LONG"):
         send_message("⚠️ Уже відкрита LONG позиція")
