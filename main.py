@@ -590,18 +590,26 @@ def place_long(symbol, usd):
         send_message(f"❌ Binance LONG error: {e}")
 
 def place_short(symbol, usd):
-    if has_open_position("LONG"):
+   if has_open_position("LONG"):
     qty_to_close = get_current_position_qty("LONG")
     if qty_to_close > 0:
         if not DRY_RUN:
-            cancel_existing_stop_order("LONG")
-            binance_client.futures_create_order(
-                symbol=symbol, side='SELL', type='MARKET',
-                quantity=qty_to_close, reduceOnly=True, positionSide='LONG'
-            )
-        send_message("🔁 Закрито LONG перед SHORT")
+            try:
+                cancel_existing_stop_order("LONG")
+                binance_client.futures_create_order(
+                    symbol=symbol,
+                    side='SELL',
+                    type='MARKET',
+                    quantity=qty_to_close,
+                    reduceOnly=True,
+                    positionSide='LONG'
+                )
+                send_message("🔁 Закрито LONG перед SHORT")
+            except Exception as e:
+                send_message(f"⚠️ Не вдалося закрити LONG перед SHORT: {e} — продовжуємо")
     else:
         send_message("⚠️ LONG позиція вже закрита — не надсилаємо reduceOnly")
+
 
 
     if has_open_position("SHORT"):
