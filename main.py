@@ -381,6 +381,19 @@ def has_open_position(side):
             elif side == "SHORT" and qty < 0:
                 return True
         return False
+        def get_current_position_qty(side):
+    try:
+        positions = binance_client.futures_position_information(symbol="BTCUSDT")
+        for p in positions:
+            amt = float(p["positionAmt"])
+            if side == "LONG" and amt > 0:
+                return amt
+            elif side == "SHORT" and amt < 0:
+                return abs(amt)
+        return 0
+    except Exception as e:
+        send_message(f"❌ Position qty error: {e}")
+        return 0
     except Exception as e:
         send_message(f"❌ Position check error: {e}")
         return False
