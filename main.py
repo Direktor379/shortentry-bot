@@ -673,15 +673,13 @@ async def monitor_trailing_stops():
 
                     if new_sl:
                        if trailing_stops[side] == new_sl:
-                          continue  # ⛔️ Пропускаємо — такий стоп уже стоїть
+                           continue  # ⛔️ Пропускаємо — такий стоп уже стоїть
 
-                       trailing_stops[side] = new_sl  # ✅ Оновлюємо тільки, якщо справді новий
-
-                       #send_message(f"🔁 {side}: Новий трейлінг-стоп {new_sl} (+{profit_pct:.2f}%)")
+                        trailing_stops[side] = new_sl  # ✅ Оновлюємо тільки, якщо справді новий
+                        
+                        # send_message(f"🔁 {side}: Новий трейлінг-стоп {new_sl} (+{profit_pct:.2f}%)")
                         cancel_existing_stop_order(side)
-
-                            ...
-
+                        
                         binance_client.futures_create_order(
                             symbol="BTCUSDT",
                             side='SELL' if side == "LONG" else 'BUY',
@@ -690,7 +688,7 @@ async def monitor_trailing_stops():
                             closePosition=True,
                             timeInForce="GTC",
                             positionSide=side
-                        )
+                         )
 
                     # Часткове закриття при TP
                     if profit_pct >= 0.9 and qty >= 0.0002:
