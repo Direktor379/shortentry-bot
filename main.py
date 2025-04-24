@@ -396,7 +396,6 @@ def get_current_position_qty(side):
         send_message(f"❌ Position qty error: {e}")
         return 0
 
-    except Exception as e:
         send_message(f"❌ Position check error: {e}")
         return False
         # 🔁 Перевірка cooldown між входами
