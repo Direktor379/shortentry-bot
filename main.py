@@ -531,7 +531,7 @@ def cancel_existing_stop_order(side):
         send_message(f"❌ Cancel stop error ({side}): {e}")
 
 def place_long(symbol, usd):
-        if has_open_position("SHORT"):
+    if has_open_position("SHORT"):
         qty_to_close = get_current_position_qty("SHORT")
         if qty_to_close > 0:
             if not DRY_RUN:
