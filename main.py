@@ -532,9 +532,10 @@ def cancel_existing_stop_order(side):
 
 def place_long(symbol, usd):
     if has_open_position("SHORT"):
-        qty_to_close = get_current_position_qty("SHORT")
-        if qty_to_close > 0:
-            if not DRY_RUN:
+    qty_to_close = get_current_position_qty("SHORT")
+    if qty_to_close > 0:
+        if not DRY_RUN:
+            try:
                 cancel_existing_stop_order("SHORT")
                 binance_client.futures_create_order(
                     symbol=symbol,
@@ -544,9 +545,12 @@ def place_long(symbol, usd):
                     reduceOnly=True,
                     positionSide='SHORT'
                 )
-            send_message("🔁 Закрито SHORT перед LONG")
-        else:
-            send_message("⚠️ SHORT позиція вже закрита — не надсилаємо reduceOnly")
+                send_message("🔁 Закрито SHORT перед LONG")
+            except Exception as e:
+                send_message(f"⚠️ Не вдалося закрити SHORT перед LONG: {e} — продовжуємо")
+    else:
+        send_message("⚠️ SHORT позиція вже закрита — не надсилаємо reduceOnly")
+
 
 
     if has_open_position("LONG"):
@@ -587,17 +591,18 @@ def place_long(symbol, usd):
 
 def place_short(symbol, usd):
     if has_open_position("LONG"):
-        qty_to_close = get_current_position_qty("LONG")
-        if qty_to_close > 0:
-            if not DRY_RUN:
-                cancel_existing_stop_order("LONG")
-                binance_client.futures_create_order(
-                    symbol=symbol, side='SELL', type='MARKET',
-                    quantity=qty_to_close, reduceOnly=True, positionSide='LONG'
-                )
-            send_message("🔁 Закрито LONG перед SHORT")
-        else:
-            send_message("⚠️ LONG позиція вже закрита — не надсилаємо reduceOnly")
+    qty_to_close = get_current_position_qty("LONG")
+    if qty_to_close > 0:
+        if not DRY_RUN:
+            cancel_existing_stop_order("LONG")
+            binance_client.futures_create_order(
+                symbol=symbol, side='SELL', type='MARKET',
+                quantity=qty_to_close, reduceOnly=True, positionSide='LONG'
+            )
+        send_message("🔁 Закрито LONG перед SHORT")
+    else:
+        send_message("⚠️ LONG позиція вже закрита — не надсилаємо reduceOnly")
+
 
     if has_open_position("SHORT"):
         send_message("⚠️ Уже відкрита SHORT позиція")
