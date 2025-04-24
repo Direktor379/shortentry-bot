@@ -371,6 +371,7 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
         sheet.append_row(row)
     except Exception as e:
         send_message(f"❌ Learning Log error: {e}")
+        
 def has_open_position(side):
     try:
         positions = binance_client.futures_position_information(symbol="BTCUSDT")
