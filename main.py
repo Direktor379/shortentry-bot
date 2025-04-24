@@ -668,10 +668,10 @@ async def monitor_cluster_trades():
                     send_message(
                         f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED"
                     )
-                   if total_sell > total_buy and total_sell >= 45:
-                       signal = "BOOSTED_SHORT"
-                   elif total_buy > total_sell and total_buy >= 45:
-                       signal = "BOOSTED_LONG"
+                if total_sell > total_buy and total_sell >= 45:
+                    signal = "BOOSTED_SHORT"
+                elif total_buy > total_sell and total_buy >= 45:
+                    signal = "BOOSTED_LONG"
 
 
 
