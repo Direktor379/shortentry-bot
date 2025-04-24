@@ -914,6 +914,47 @@ async def monitor_trailing_stops():
 # 🚀 Запуск FastAPI + кластер + трейлінг + автоаналіз
 
 # ✅ Запуск моніторів GPT при старті FastAPI
+# 🤖 Автоматичний аналіз без сигналу (щохвилини)
+async def monitor_auto_signals():
+    global last_open_interest
+    while True:
+        try:
+            oi = get_open_interest("BTCUSDT")
+            volume = get_volume("BTCUSDT")
+            news = get_latest_news()
+
+            if not oi or not volume:
+                await asyncio.sleep(60)
+                continue
+
+            delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest else 0
+            last_open_interest = oi
+
+            # Генеруємо базовий сигнал
+            if delta > 0.2:
+                signal = "LONG"
+            elif delta < -0.2:
+                signal = "SHORT"
+            else:
+                signal = None
+
+            if not signal:
+                await asyncio.sleep(60)
+                continue
+
+            decision = await ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)  
+            send_message(f"🤖 GPT (auto): {decision} на базі delta {delta:.2f}%")
+
+            if decision in ["LONG", "BOOSTED_LONG"]:
+                await asyncio.to_thread(place_long, "BTCUSDT", TRADE_USD_AMOUNT)
+            elif decision in ["SHORT", "BOOSTED_SHORT"]:
+                await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
+
+        except Exception as e:
+            send_message(f"❌ Auto-signal error: {e}")
+
+        await asyncio.sleep(60)
+
 @app.on_event("startup")
 async def start_all_monitors():
     try:
