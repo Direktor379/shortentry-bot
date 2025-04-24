@@ -531,25 +531,25 @@ def cancel_existing_stop_order(side):
         send_message(f"❌ Cancel stop error ({side}): {e}")
 
 def place_long(symbol, usd):
-    if has_open_position("SHORT"):
-    qty_to_close = get_current_position_qty("SHORT")
-    if qty_to_close > 0:
-        if not DRY_RUN:
-            try:
-                cancel_existing_stop_order("SHORT")
-                binance_client.futures_create_order(
-                    symbol=symbol,
-                    side='BUY',
-                    type='MARKET',
-                    quantity=qty_to_close,
-                    reduceOnly=True,
-                    positionSide='SHORT'
-                )
-                send_message("🔁 Закрито SHORT перед LONG")
-            except Exception as e:
-                send_message(f"⚠️ Не вдалося закрити SHORT перед LONG: {e} — продовжуємо")
-    else:
-        send_message("⚠️ SHORT позиція вже закрита — не надсилаємо reduceOnly")
+        if has_open_position("SHORT"):
+        qty_to_close = get_current_position_qty("SHORT")
+        if qty_to_close > 0:
+            if not DRY_RUN:
+                try:
+                    cancel_existing_stop_order("SHORT")
+                    binance_client.futures_create_order(
+                        symbol=symbol,
+                        side='BUY',
+                        type='MARKET',
+                        quantity=qty_to_close,
+                        reduceOnly=True,
+                        positionSide='SHORT'
+                    )
+                    send_message("🔁 Закрито SHORT перед LONG")
+                except Exception as e:
+                    send_message(f"⚠️ Не вдалося закрити SHORT перед LONG: {e} — продовжуємо")
+        else:
+            send_message("⚠️ SHORT позиція вже закрита — не надсилаємо reduceOnly")
 
 
 
