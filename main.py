@@ -680,7 +680,7 @@ async def monitor_trailing_stops():
                           trailing_stops[side] = new_sl  # ✅ Оновлюємо тільки, якщо новий стоп кращий
                     
                          # send_message(f"🔁 {side}: Новий трейлінг-стоп {new_sl} (+{profit_pct:.2f}%)")
-                         cancel_existing_stop_order(side)
+                          cancel_existing_stop_order(side)
 
                          binance_client.futures_create_order(
                             symbol="BTCUSDT",
