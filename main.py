@@ -654,14 +654,14 @@ async def monitor_cluster_trades():
 
                 # 🔍 Логіка сигналу
                 signal = None
-                    if buy_ratio >= 90 and total_buy >= 80:
-                        signal = "SUPER_BOOSTED_LONG"
-                    elif sell_ratio >= 90 and total_sell >= 80:
-                        signal = "SUPER_BOOSTED_SHORT"
-                    elif total_buy >= 65:
-                        signal = "BOOSTED_LONG"
-                    elif total_sell >= 65:
-                        signal = "BOOSTED_SHORT"
+                if buy_ratio >= 90 and total_buy >= 80:
+                    signal = "SUPER_BOOSTED_LONG"
+                elif sell_ratio >= 90 and total_sell >= 80:
+                    signal = "SUPER_BOOSTED_SHORT"
+                elif total_buy >= 65:
+                    signal = "BOOSTED_LONG"
+                elif total_sell >= 65:
+                    signal = "BOOSTED_SHORT"
 
                     # Не BOOSTED, але активність
                     if signal is None and (total_buy > 40 or total_sell > 40):
