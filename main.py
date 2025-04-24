@@ -520,6 +520,15 @@ def is_cooldown_passed():
         return True
     return False
 
+# 🧰 Утиліта для скасування старих STOP-ордерів
+def cancel_existing_stop_order(side):
+    try:
+        orders = binance_client.futures_get_open_orders(symbol="BTCUSDT")
+        for o in orders:
+            if o["type"] == "STOP_MARKET" and o["positionSide"] == side:
+                binance_client.futures_cancel_order(symbol="BTCUSDT", orderId=o["orderId"])
+    except Exception as e:
+        send_message(f"❌ Cancel stop error ({side}): {e}")
 
 def place_long(symbol, usd):
     if has_open_position("SHORT"):
