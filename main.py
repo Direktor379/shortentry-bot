@@ -647,13 +647,13 @@ async def monitor_cluster_trades():
                     cluster_is_processing = False
                     continue
 
-                    buy_volume = sum(t["qty"] for t in trade_buffer if not t["is_sell"])
-                    sell_volume = sum(t["qty"] for t in trade_buffer if t["is_sell"])
-                    buy_ratio = (buy_volume / (buy_volume + sell_volume)) * 100 if (buy_volume + sell_volume) > 0 else 0
-                    sell_ratio = 100 - buy_ratio
+                buy_volume = sum(t["qty"] for t in trade_buffer if not t["is_sell"])
+                sell_volume = sum(t["qty"] for t in trade_buffer if t["is_sell"])
+                buy_ratio = (buy_volume / (buy_volume + sell_volume)) * 100 if (buy_volume + sell_volume) > 0 else 0
+                sell_ratio = 100 - buy_ratio
 
-                    # 🔍 Логіка сигналу
-                    signal = None
+                # 🔍 Логіка сигналу
+                signal = None
                     if buy_ratio >= 90 and total_buy >= 80:
                         signal = "SUPER_BOOSTED_LONG"
                     elif sell_ratio >= 90 and total_sell >= 80:
