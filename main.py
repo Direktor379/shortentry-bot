@@ -381,6 +381,7 @@ def has_open_position(side):
             elif side == "SHORT" and qty < 0:
                 return True
         return False
+        
         def get_current_position_qty(side):
     try:
         positions = binance_client.futures_position_information(symbol="BTCUSDT")
