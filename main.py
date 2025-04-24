@@ -382,7 +382,10 @@ def has_open_position(side):
                 return True
             elif side == "SHORT" and qty < 0:
                 return True
-            return False
+        return False  # ✅ тільки після перевірки всіх позицій
+    except Exception as e:
+        send_message(f"❌ Position check error: {e}")
+        return False
 
 def get_current_position_qty(side):
     try:
