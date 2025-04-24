@@ -382,8 +382,8 @@ def has_open_position(side):
                 return True
         return False
         
-def get_current_position_qty(side):
-    try:
+ def get_current_position_qty(side):
+     try:
         positions = binance_client.futures_position_information(symbol="BTCUSDT")
         for p in positions:
             amt = float(p["positionAmt"])
