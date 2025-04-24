@@ -362,16 +362,16 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
 
         try:
             sheet = sh.worksheet("Learning Log")
-        except Exception as e:
+        except Exception:
             sheet = sh.add_worksheet(title="Learning Log", rows="1000", cols="10")
             sheet.append_row(["Time", "Type", "Result", "PnL", "GPT Analysis"])
-
 
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         row = [now, trade_type, result, pnl or "", reason]
         sheet.append_row(row)
     except Exception as e:
         send_message(f"❌ Learning Log error: {e}")
+
         
 def has_open_position(side):
     try:
