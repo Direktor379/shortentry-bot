@@ -911,6 +911,7 @@ async def monitor_cluster_trades():
 
 
             await asyncio.sleep(60)
+            
 # 📬 Webhook для TradingView
 
 @app.post("/webhook")
