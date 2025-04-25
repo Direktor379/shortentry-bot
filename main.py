@@ -402,7 +402,7 @@ def get_candle_summary(symbol="BTCUSDT", interval="1m", limit=5):
         return "⚠️ Дані свічок недоступні"
 
 # 🧠 Аналіз останніх 5 свічок + кластерів + VWAP → GPT рішення
-def analyze_candle_gpt(vwap, cluster_buy, cluster_sell):
+async def analyze_candle_gpt(vwap, cluster_buy, cluster_sell):
     try:
         # 🕯️ Завантаження останніх 5 свічок
         candles_raw = binance_client.futures_klines(symbol="BTCUSDT", interval="1m", limit=5)
@@ -463,14 +463,13 @@ BOOSTED — потужний імпульс, сильний рух
                 messages=[
                     {"role": "system", "content": (
                         "Ти професійний скальпер. "
-                        "Вибирай тільки одне: SKIP / NORMAL / BOOSTED. Додай дуже коротке пояснення."
+                        "Вибери тільки одне: SKIP / NORMAL / BOOSTED. Додай дуже коротке пояснення."
                     )},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3
             )
         )
-
 
         reply = response.choices[0].message.content.strip()
         decision = reply.split()[0].upper()
@@ -489,6 +488,7 @@ BOOSTED — потужний імпульс, сильний рух
             "decision": "SKIP",
             "reason": f"GPT error: {e}"
         }
+
 # 🧱 Отримання snapshot order book (стіни покупців і продавців)
 def get_orderbook_snapshot(symbol="BTCUSDT", depth=50):
     try:
