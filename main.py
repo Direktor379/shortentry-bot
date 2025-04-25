@@ -718,9 +718,7 @@ async def monitor_cluster_trades():
                 ping_interval=None,
                 close_timeout=1,
                 max_queue=None,
-                max_size=None,
-                read_limit=2**20,
-                write_limit=2**20
+                max_size=None
             ) as websocket:
 
                 last_impulse = {"side": None, "volume": 0, "timestamp": 0}
