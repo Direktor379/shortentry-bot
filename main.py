@@ -894,7 +894,7 @@ async def monitor_cluster_trades():
                             cluster_last_reset = now
                             cluster_is_processing = False
 
-                   
+                       except Exception as e:
                         try:
                             now = time.time()
                             global last_ws_restart_time
@@ -914,8 +914,8 @@ async def monitor_cluster_trades():
             
 # 📬 Webhook для TradingView
 
-@app.post("/webhook")
-async def webhook(req: Request):
+ @app.post("/webhook")
+ async def webhook(req: Request):
     global last_open_interest
     try:
         data = await req.json()
