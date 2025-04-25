@@ -723,20 +723,19 @@ async def monitor_cluster_trades():
                 write_limit=2**20
             ) as websocket:
 
-
                 last_impulse = {"side": None, "volume": 0, "timestamp": 0}
                 trade_buffer = []
-                buffer_duration = 5  # секунд
+                buffer_duration = 5
 
                 while True:
                     try:
-                        msg_raw = await asyncio.wait_for(websocket.recv(), timeout=10)
-                    except asyncio.TimeoutError:
-                        continue  # просто скіпаємо, не валимо цикл
-                    
-                    msg = json.loads(msg_raw)
-                    await asyncio.sleep(0.01)
+                        try:
+                            msg_raw = await asyncio.wait_for(websocket.recv(), timeout=10)
+                        except asyncio.TimeoutError:
+                            continue  # WS живе — просто не було повідомлень
 
+                        msg = json.loads(msg_raw)
+                        await asyncio.sleep(0.01)
 
                         price = float(msg['p'])
                         qty = float(msg['q'])
@@ -760,7 +759,6 @@ async def monitor_cluster_trades():
 
                         await asyncio.sleep(0)
 
-                        # Примусовий перезапуск WebSocket кожні 10 хв
                         if time.time() - cluster_last_reset > 600:
                             raise Exception("🔁 Manual WS restart to prevent timeout")
 
@@ -813,7 +811,7 @@ async def monitor_cluster_trades():
                                 signal = "BOOSTED_SHORT"
 
                             if signal is None and (total_buy > 40 or total_sell > 40):
-                                if int(time.time()) % 15 == 0:  # антиспам
+                                if int(time.time()) % 15 == 0:
                                     send_message(
                                         f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED"
                                     )
@@ -860,7 +858,6 @@ async def monitor_cluster_trades():
                                 volume = cached_volume
 
                                 cluster_direction_info = f"Кластерний напрям: Buy {buy_ratio:.1f}%, Sell {sell_ratio:.1f}%"
-
                                 candles = get_candle_summary("BTCUSDT")
                                 walls = get_orderbook_snapshot("BTCUSDT")
 
@@ -888,8 +885,6 @@ async def monitor_cluster_trades():
                                 elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
                                     if is_cooldown_passed():
                                         await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
-
-                        now = time.time()
 
                         if now - last_ws_restart_time >= 60:
                             send_message("⚠️ Cluster WS reconnecting")
