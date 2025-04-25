@@ -1045,8 +1045,8 @@ async def monitor_auto_signals():
     global last_open_interest
     while True:
         try:
-            oi = get_open_interest("BTCUSDT")
-            volume = get_volume("BTCUSDT")
+            oi = cached_oi
+            volume = cached_volume
             news = get_latest_news()
 
             if not oi or not volume:
