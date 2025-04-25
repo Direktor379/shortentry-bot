@@ -24,6 +24,9 @@ async def healthcheck():
     return {"status": "running"}
 # 🔁 Cooldown між входами (щоб не спамити)
 last_trade_time = 0
+cached_oi = None
+cached_volume = None
+cached_vwap = None
 COOLDOWN_SECONDS = 90
 # 🔐 Змінні оточення
 BOT_TOKEN = os.getenv("BOT_TOKEN")
