@@ -889,9 +889,9 @@ async def monitor_cluster_trades():
                             else:
                                 send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
 
-                                    await asyncio.sleep(5)
+                            await asyncio.sleep(5)
 
-                            except Exception as e:
+                        except Exception as e:
                                 send_message(f"❌ WebSocket error: {e}")
                                 await asyncio.sleep(5)  # трохи паузи перед перезапуском
 
