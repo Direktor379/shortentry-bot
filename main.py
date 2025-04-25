@@ -890,25 +890,17 @@ async def monitor_cluster_trades():
                                     else:
                                         send_message("⏳ Пропущено SHORT — cooldown не минув")
 
-                            cluster_data.clear()
-                            cluster_last_reset = now
-                            cluster_is_processing = False
+                            now = time.time()
+                            global last_ws_restart_time
 
-                            try:
-                                now = time.time()
-                                global last_ws_restart_time
-                            
-                                if now - last_ws_restart_time >= 60:
-                                    send_message(f"⚠️ Cluster WS reconnecting")
-                                    last_ws_restart_time = now
-                                else:
-                                    send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
-                            
-                                await asyncio.sleep(5)
-                            
-                            except Exception as inner_e:
-                                send_message(f"❌ Reconnect block error: {inner_e}")
-                                pass
+                            if now - last_ws_restart_time >= 60:
+                                send_message(f"⚠️ Cluster WS reconnecting")
+                                last_ws_restart_time = now
+                            else:
+                                send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
+
+                            await asyncio.sleep(5)
+
 
 
 
