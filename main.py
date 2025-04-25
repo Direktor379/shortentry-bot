@@ -713,7 +713,7 @@ async def monitor_cluster_trades():
     while True:
         try:
             async with websockets.connect(uri) as websocket:
-                
+
                 last_impulse = {"side": None, "volume": 0, "timestamp": 0}
                 trade_buffer = []
                 buffer_duration = 5  # секунд
@@ -723,6 +723,7 @@ async def monitor_cluster_trades():
                         msg_raw = await asyncio.wait_for(websocket.recv(), timeout=10)
                         msg = json.loads(msg_raw)
                         await asyncio.sleep(0.01)
+
                         price = float(msg['p'])
                         qty = float(msg['q'])
                         is_sell = msg['m']
@@ -744,17 +745,15 @@ async def monitor_cluster_trades():
                             cluster_data[bucket]['buy'] += qty
 
                         await asyncio.sleep(0)
-                        
+
                         # Примусовий перезапуск WebSocket кожні 10 хв
                         if time.time() - cluster_last_reset > 600:
-                           raise Exception("🔁 Manual WS restart to prevent timeout")
-
-
+                            raise Exception("🔁 Manual WS restart to prevent timeout")
 
                         now = time.time()
                         if now - cluster_last_reset >= CLUSTER_INTERVAL and not cluster_is_processing:
                             cluster_is_processing = True
-                            
+
                             strongest_bucket = max(cluster_data.items(), key=lambda x: x[1]["buy"] + x[1]["sell"])
                             total_buy = strongest_bucket[1]["buy"]
                             total_sell = strongest_bucket[1]["sell"]
@@ -848,13 +847,13 @@ async def monitor_cluster_trades():
 
                                 candles = get_candle_summary("BTCUSDT")
                                 walls = get_orderbook_snapshot("BTCUSDT")
-                                
+
                                 if not is_cooldown_passed():
-                                   send_message("⏳ Пропущено GPT-аналіз — cooldown не минув")
-                                   cluster_data.clear()
-                                   cluster_last_reset = time.time()
-                                   cluster_is_processing = False
-                                   continue
+                                    send_message("⏳ Пропущено GPT-аналіз — cooldown не минув")
+                                    cluster_data.clear()
+                                    cluster_last_reset = time.time()
+                                    cluster_is_processing = False
+                                    continue
 
                                 decision = await ask_gpt_trade_with_all_context(
                                     signal,
@@ -880,23 +879,24 @@ async def monitor_cluster_trades():
                                     else:
                                         send_message("⏳ Пропущено SHORT — cooldown не минув")
 
-                            now = time.time()
-                            global last_ws_restart_time
+                        now = time.time()
+                        global last_ws_restart_time
 
-                            if now - last_ws_restart_time >= 60:
-                                send_message(f"⚠️ Cluster WS reconnecting")
-                                last_ws_restart_time = now
-                            else:
-                                send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
+                        if now - last_ws_restart_time >= 60:
+                            send_message(f"⚠️ Cluster WS reconnecting")
+                            last_ws_restart_time = now
+                        else:
+                            send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
 
-                            await asyncio.sleep(5)
+                        await asyncio.sleep(5)
 
+                    except Exception as e:
+                        send_message(f"❌ Внутрішня помилка WebSocket: {e}")
+                        await asyncio.sleep(5)
 
-
-    except Exception as e:
-        send_message(f"❌ Зовнішня помилка WebSocket: {e}")
-        await asyncio.sleep(10)
-
+        except Exception as e:
+            send_message(f"❌ Зовнішня помилка WebSocket: {e}")
+            await asyncio.sleep(10)
             
 # 📬 Webhook для TradingView
 
