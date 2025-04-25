@@ -890,19 +890,7 @@ async def monitor_cluster_trades():
                                     else:
                                         send_message("⏳ Пропущено SHORT — cooldown не минув")
 
-                           while True:
-                              try:
-                                 async with websockets.connect(uri) as websocket:
-                                     asyncio.create_task(ping_loop(websocket))
-                                     ...
-                             except Exception as e:
-                                 send_message(f"⚠️ Cluster WS reconnecting: {e}")
-                                 await asyncio.sleep(5)
                         
-
-
-
-
             
 # 📬 Webhook для TradingView
 
