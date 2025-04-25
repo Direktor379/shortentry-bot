@@ -734,12 +734,12 @@ async def monitor_cluster_trades():
                         trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
 
                         bucket = round(price / CLUSTER_BUCKET_SIZE) * CLUSTER_BUCKET_SIZE
-                       if is_sell:
-                          cluster_data[bucket]['sell'] += qty
-                       else:
-                           cluster_data[bucket]['buy'] += qty
+                        if is_sell:
+                            cluster_data[bucket]['sell'] += qty
+                        else:
+                            cluster_data[bucket]['buy'] += qty
 
-                           await asyncio.sleep(0.1)
+                            await asyncio.sleep(0.1)
 
 
                         now = time.time()
