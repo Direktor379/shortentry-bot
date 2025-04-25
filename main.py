@@ -309,6 +309,16 @@ def get_open_interest(symbol="BTCUSDT"):
     except Exception as e:
         send_message(f"❌ OI error: {e}")
         return None
+# 📰 Отримання останніх новин з CryptoPanic
+def get_latest_news():
+    try:
+        url = f"https://cryptopanic.com/api/v1/posts/?auth_token={NEWS_API_KEY}&filter=important"
+        r = requests.get(url)
+        news = r.json()
+        return "\n".join([item["title"] for item in news.get("results", [])[:3]])
+    except Exception as e:
+        send_message(f"❌ News error: {e}")
+        return "⚠️ Новини не вдалося завантажити."
 
 # 📊 Отримання обʼєму торгів за хвилину
 def get_volume(symbol="BTCUSDT"):
