@@ -915,8 +915,8 @@ async def monitor_cluster_trades():
             
 # 📬 Webhook для TradingView
 
- @app.post("/webhook")
- async def webhook(req: Request):
+@app.post("/webhook")
+async def webhook(req: Request):
     global last_open_interest
     try:
         data = await req.json()
