@@ -263,7 +263,7 @@ Open Interest: {oi_text}
 
         res = await asyncio.to_thread(
             client.chat.completions.create,
-            model="gpt-4-turbo",
+            model="gpt-3.5-turbo"
             messages=[
                 {"role": "system", "content": (
                     "Ти досвідчений скальп-трейдер. "
@@ -455,7 +455,7 @@ BOOSTED — потужний імпульс, сильний рух
 """
 
         response = client.chat.completions.create(
-            model="gpt-4-turbo",
+            model="gpt-3.5-turbo"
             messages=[
                 {"role": "system", "content": "Ти професійний скальпер. Вибирай тільки одне: SKIP / NORMAL / BOOSTED. Додай дуже коротке пояснення."},
                 {"role": "user", "content": prompt}
@@ -970,7 +970,7 @@ PnL: {pnl}
 Поясни коротко (1 реченням), чому результат був таким. Якщо була помилка — вкажи її.
 """
         res = client.chat.completions.create(   
-            model="gpt-4-turbo",
+            model="gpt-3.5-turbo"
             messages=[
                 {"role": "system", "content": "Ти трейдинг-аналітик. Поясни коротко, чому угода завершилась так. Відповідай однією фразою без зайвих деталей."},
                 {"role": "user", "content": prompt}
