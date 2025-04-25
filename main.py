@@ -740,7 +740,7 @@ async def monitor_cluster_trades():
                         else:
                             cluster_data[bucket]['buy'] += qty
 
-                            await asyncio.sleep(0.05)
+                        await asyncio.sleep(0.05)
 
 
                         now = time.time()
