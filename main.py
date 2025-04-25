@@ -898,16 +898,16 @@ async def monitor_cluster_trades():
                         send_message(f"⚠️ Cluster WS error: {e}")
                         await asyncio.sleep(5)
 
-        global last_ws_restart_time
-now = time.time()
-
-if now - last_ws_restart_time >= 60:  # чекаємо мінімум 60 секунд між перепідключеннями
-    send_message(f"⚠️ Cluster WS reconnecting: {e}")
-    last_ws_restart_time = now
-else:
-    send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
-
-await asyncio.sleep(5)
+                    global last_ws_restart_time
+            now = time.time()
+            
+            if now - last_ws_restart_time >= 60:  # чекаємо мінімум 60 секунд між перепідключеннями
+                send_message(f"⚠️ Cluster WS reconnecting: {e}")
+                last_ws_restart_time = now
+            else:
+                send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
+            
+            await asyncio.sleep(5)
 
 
         await asyncio.sleep(60)
