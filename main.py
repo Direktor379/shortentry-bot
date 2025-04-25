@@ -262,19 +262,19 @@ Open Interest: {oi_text}
 """
 
         res = await asyncio.to_thread(
-    lambda: client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": (
-                "Ти досвідчений скальп-трейдер. "
-                "Вибери лише одне слово з цього списку: LONG, BOOSTED_LONG, SHORT, BOOSTED_SHORT або SKIP. "
-                "Не додавай пояснень. Відповідай тільки одним словом."
-            )},
-            {"role": "user", "content": prompt}
-        ]
-    )
-)
-
+            lambda: client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": (
+                        "Ти досвідчений скальп-трейдер. "
+                        "Вибери лише одне слово з цього списку: LONG, BOOSTED_LONG, SHORT, BOOSTED_SHORT або SKIP. "
+                        "Не додавай пояснень. Відповідай тільки одним словом."
+                    )},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+        )
+        
 
         gpt_answer = res.choices[0].message.content.strip()
         send_message(f"📤 GPT: {gpt_answer}")
@@ -458,18 +458,18 @@ BOOSTED — потужний імпульс, сильний рух
 """
 
         response = await asyncio.to_thread(
-    lambda: client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": (
-                "Ти професійний скальпер. "
-                "Вибирай тільки одне: SKIP / NORMAL / BOOSTED. Додай дуже коротке пояснення."
-            )},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.3
-    )
-)
+            lambda: client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": (
+                        "Ти професійний скальпер. "
+                        "Вибирай тільки одне: SKIP / NORMAL / BOOSTED. Додай дуже коротке пояснення."
+                    )},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3
+            )
+        )
 
 
         reply = response.choices[0].message.content.strip()
@@ -979,15 +979,15 @@ PnL: {pnl}
 Поясни коротко (1 реченням), чому результат був таким. Якщо була помилка — вкажи її.
 """
         res = client.chat.completions.create(
-    model="gpt-3.5-turbo",
-    messages=[
-        {"role": "system", "content": (
-            "Ти трейдинг-аналітик. Поясни коротко, чому угода завершилась так. "
-            "Відповідай однією фразою без зайвих деталей."
-        )},
-        {"role": "user", "content": prompt}
-    ]
-)
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": (
+                    "Ти трейдинг-аналітик. Поясни коротко, чому угода завершилась так. "
+                    "Відповідай однією фразою без зайвих деталей."
+                )},
+                {"role": "user", "content": prompt}
+            ]
+        )
 
         return res.choices[0].message.content.strip()
     except Exception as e:
