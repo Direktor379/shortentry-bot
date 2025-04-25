@@ -706,15 +706,6 @@ async def monitor_market_cache():
             send_message(f"❌ Cache update error: {e}")
         await asyncio.sleep(10)
 
-async def ping_loop(ws):
-    while True:
-        try:
-            await ws.ping()
-            print(f"📡 Ping sent: {datetime.utcnow().isoformat()}")
-            await asyncio.sleep(20)
-        except Exception as e:
-            send_message(f"⚠️ Ping loop stopped: {e}")
-            break
 
 async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing, last_ws_restart_time
@@ -723,8 +714,7 @@ async def monitor_cluster_trades():
     while True:
         try:
             async with websockets.connect(uri) as websocket:
-                asyncio.create_task(ping_loop(websocket))  # ⏱ запускаємо пінг у фоні
-
+            
                 last_impulse = {"side": None, "volume": 0, "timestamp": 0}
                 trade_buffer = []
                 buffer_duration = 5  # секунд
