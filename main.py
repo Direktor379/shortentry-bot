@@ -723,11 +723,12 @@ async def monitor_cluster_trades():
                             cluster_data[bucket]['sell'] += qty
                         else:
                             cluster_data[bucket]['buy'] += qty
+                            await asyncio.sleep(0.1)
 
                         now = time.time()
                         if now - cluster_last_reset >= CLUSTER_INTERVAL and not cluster_is_processing:
                             cluster_is_processing = True
-
+                            
                             strongest_bucket = max(cluster_data.items(), key=lambda x: x[1]["buy"] + x[1]["sell"])
                             total_buy = strongest_bucket[1]["buy"]
                             total_sell = strongest_bucket[1]["sell"]
