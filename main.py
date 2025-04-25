@@ -890,7 +890,7 @@ async def monitor_cluster_trades():
                                     else:
                                         send_message("⏳ Пропущено SHORT — cooldown не минув")
 
-                                                        cluster_data.clear()
+                            cluster_data.clear()
                             cluster_last_reset = now
                             cluster_is_processing = False
 
