@@ -1011,7 +1011,13 @@ async def webhook(req: Request):
         # Беремо дані з кешу
         oi = cached_oi
         volume = cached_volume
-        news = get_latest_news()
+
+        # 🔥 Гарантовано викликаємо новини без крашу
+        try:
+            news = get_latest_news()
+        except Exception as news_error:
+            send_message(f"❌ News fallback error: {news_error}")
+            news = "⚠️ Новини тимчасово недоступні."
 
         if not oi or not volume:
             send_message("⚠️ Дані кешу ще не прогріті — пропущено webhook.")
@@ -1035,6 +1041,7 @@ async def webhook(req: Request):
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
+
 
 
 
