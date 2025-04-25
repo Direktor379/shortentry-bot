@@ -46,6 +46,7 @@ trailing_stops = {"LONG": None, "SHORT": None}
 cluster_data = defaultdict(lambda: {"buy": 0, "sell": 0})
 cluster_last_reset = time.time()
 cluster_is_processing = False
+last_ws_restart_time = 0  # ⏰ час останнього перепідключення WebSocket
 CLUSTER_BUCKET_SIZE = 10  # $10 діапазон
 CLUSTER_INTERVAL = 10  # кожні 10 сек оновлення
 
@@ -892,7 +893,6 @@ async def monitor_cluster_trades():
                             cluster_data.clear()
                             cluster_last_reset = now
                             cluster_is_processing = False
-                            last_ws_restart_time = 0  # 🕒 час останнього перепідключення WebSocket
 
                     except Exception as e:
                         send_message(f"⚠️ Cluster WS error: {e}")
