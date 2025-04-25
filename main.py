@@ -719,6 +719,7 @@ async def monitor_cluster_trades():
                 while True:
                     try:
                         msg = json.loads(await websocket.recv())
+                        await asyncio.sleep(0.01)
                         price = float(msg['p'])
                         qty = float(msg['q'])
                         is_sell = msg['m']
