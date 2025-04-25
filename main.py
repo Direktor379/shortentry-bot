@@ -906,8 +906,8 @@ async def webhook(req: Request):
         volume = cached_volume
         news = get_latest_news()
         if not oi or not volume:
-    send_message("⚠️ Дані кешу ще не прогріті — пропущено webhook.")
-    return {"error": "Cache not ready"}
+           send_message("⚠️ Дані кешу ще не прогріті — пропущено webhook.")
+           return {"error": "Cache not ready"}
 
 
         delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
@@ -1091,6 +1091,7 @@ async def monitor_auto_signals():
 @app.on_event("startup")
 async def start_all_monitors():
     try:
+        asyncio.create_task(monitor_market_cache())
         asyncio.create_task(monitor_cluster_trades())
         asyncio.create_task(monitor_trailing_stops())
         asyncio.create_task(monitor_auto_signals())
