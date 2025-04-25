@@ -474,16 +474,14 @@ def get_orderbook_snapshot(symbol="BTCUSDT", depth=50):
         return "⚠️ Дані про стіни недоступні"
 # 📡 Моніторинг кластерів через WebSocket
 async def monitor_cluster_trades():
-    global cluster_last_reset, cluster_is_processing
+    global cluster_last_reset, cluster_is_processing, last_ws_error_time
     uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
+    last_ws_error_time = 0  # антиспам для WS помилок
 
     while True:
         try:
             async with websockets.connect(uri) as websocket:
                 last_impulse = {"side": None, "volume": 0, "timestamp": 0}
-                global last_ws_error_time
-                last_ws_error_time = 0
-
                 trade_buffer = []
                 buffer_duration = 5  # секунд
 
@@ -505,7 +503,7 @@ async def monitor_cluster_trades():
                             "timestamp": timestamp
                         })
 
-                        # Очистка буфера від старих трейдів
+                        # Очистка старих трейдів
                         trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
 
                         bucket = round(price / CONFIG["CLUSTER_BUCKET_SIZE"]) * CONFIG["CLUSTER_BUCKET_SIZE"]
@@ -516,7 +514,7 @@ async def monitor_cluster_trades():
 
                         now = time.time()
 
-                        # 🔥 Перевірка часу кластера
+                        # 🧠 Обробка кожні CLUSTER_INTERVAL сек
                         if now - cluster_last_reset >= CONFIG["CLUSTER_INTERVAL"] and not cluster_is_processing:
                             cluster_is_processing = True
 
@@ -524,14 +522,13 @@ async def monitor_cluster_trades():
                             total_buy = strongest_bucket[1]["buy"]
                             total_sell = strongest_bucket[1]["sell"]
 
-                            # 🧠 GPT аналіз останніх 5 свічок + кластерів
+                            # GPT кластерний аналіз 5 свічок
                             gpt_candle_result = analyze_candle_gpt(
                                 vwap=cached_vwap,
                                 cluster_buy=total_buy,
                                 cluster_sell=total_sell
                             )
 
-                            # Якщо GPT каже SKIP — очищаємо і чекаємо
                             if gpt_candle_result["decision"] == "SKIP":
                                 cluster_data.clear()
                                 cluster_last_reset = time.time()
@@ -563,8 +560,7 @@ async def monitor_cluster_trades():
                                 elif total_buy > total_sell and total_buy >= CONFIG["ALT_BOOST_THRESHOLD"]:
                                     signal = "BOOSTED_LONG"
 
-                            # 🛡️ Якщо вже відкрита позиція в цьому напрямку — пропустити
-                            if signal is not None and (
+                            if signal and (
                                 (signal.startswith("LONG") and has_open_position("LONG")) or
                                 (signal.startswith("SHORT") and has_open_position("SHORT"))
                             ):
@@ -574,30 +570,22 @@ async def monitor_cluster_trades():
                                 await asyncio.sleep(1)
                                 continue
 
-                            # 🧠 Блокування протилежних сигналів після імпульсу
-                            if (
-                                signal is not None and
-                                last_impulse["side"] == "BUY" and signal.startswith("SHORT") and
-                                last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]
-                            ):
+                            # Блокування протилежного входу після імпульсу
+                            if signal and last_impulse["side"] == "BUY" and signal.startswith("SHORT") and \
+                                    last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
                                 send_message("⏳ Відхилено SHORT — щойно був великий BUY")
                                 signal = None
 
-                            elif (
-                                signal is not None and
-                                last_impulse["side"] == "SELL" and signal.startswith("LONG") and
-                                last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]
-                            ):
+                            if signal and last_impulse["side"] == "SELL" and signal.startswith("LONG") and \
+                                    last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
                                 send_message("⏳ Відхилено LONG — щойно був великий SELL")
                                 signal = None
 
-                            # 🧠 Запамʼятовуємо імпульс
                             if signal in ["BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
                                 last_impulse = {"side": "BUY", "volume": total_buy, "timestamp": now}
                             elif signal in ["BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
                                 last_impulse = {"side": "SELL", "volume": total_sell, "timestamp": now}
 
-                            # 🚀 Якщо є сигнал — готуємо весь контекст
                             if signal:
                                 news = get_latest_news()
                                 oi = cached_oi
@@ -623,11 +611,9 @@ async def monitor_cluster_trades():
                                 if "SUPER" in signal:
                                     send_message(f"🚀 {signal}: домінація {'BUY' if 'LONG' in signal else 'SELL'} {round(max(buy_ratio, sell_ratio))}%")
 
-                                # 📈 Реалізація відкриття угод
                                 if decision in ["LONG", "BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
                                     if is_cooldown_passed():
                                         await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
-
                                 elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
                                     if is_cooldown_passed():
                                         await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
@@ -636,10 +622,15 @@ async def monitor_cluster_trades():
                             cluster_last_reset = now
                             cluster_is_processing = False
 
-        
-                   except Exception as e:
-                        send_message(f"⚠️ Cluster WS error: {e}")
-                        await asyncio.sleep(5)
+                    except Exception as e:
+                        if "1011" in str(e) or "timeout" in str(e):
+                            now = time.time()
+                            if now - last_ws_error_time > 60:
+                                send_message("⚠️ WS 1011 / timeout — перепідключення...")
+                                last_ws_error_time = now
+                        else:
+                            send_message(f"⚠️ Cluster WS error: {e}")
+                        await asyncio.sleep(10)
 
         except Exception as e:
             send_message(f"❌ Зовнішня помилка WebSocket: {e}")
