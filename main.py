@@ -892,14 +892,23 @@ async def monitor_cluster_trades():
                             cluster_data.clear()
                             cluster_last_reset = now
                             cluster_is_processing = False
+                            last_ws_restart_time = 0  # 🕒 час останнього перепідключення WebSocket
 
                     except Exception as e:
                         send_message(f"⚠️ Cluster WS error: {e}")
                         await asyncio.sleep(5)
 
-        except Exception as e:
-            send_message(f"⚠️ Cluster WS reconnecting: {e}")
-            await asyncio.sleep(5)
+        global last_ws_restart_time
+now = time.time()
+
+if now - last_ws_restart_time >= 60:  # чекаємо мінімум 60 секунд між перепідключеннями
+    send_message(f"⚠️ Cluster WS reconnecting: {e}")
+    last_ws_restart_time = now
+else:
+    send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
+
+await asyncio.sleep(5)
+
 
         await asyncio.sleep(60)
 # 📬 Webhook для TradingView
