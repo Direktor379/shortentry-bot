@@ -909,6 +909,7 @@ async def monitor_cluster_trades():
                     
                         except Exception as inner_e:
                             send_message(f"❌ Reconnect block error: {inner_e}")
+                            pass
 
             
 # 📬 Webhook для TradingView
