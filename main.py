@@ -708,30 +708,19 @@ async def monitor_market_cache():
 
 
 async def monitor_cluster_trades():
-    global cluster_last_reset, cluster_is_processing, last_ws_restart_time
+    global cluster_last_reset, cluster_is_processing
     uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
 
     while True:
         try:
-            async with websockets.connect(
-                uri,
-                ping_interval=None,
-                close_timeout=1,
-                max_queue=None,
-                max_size=None
-            ) as websocket:
-
+            async with websockets.connect(uri) as websocket:
                 last_impulse = {"side": None, "volume": 0, "timestamp": 0}
                 trade_buffer = []
-                buffer_duration = 5
+                buffer_duration = 5  # секунд
 
                 while True:
                     try:
-                        try:
-                            msg_raw = await asyncio.wait_for(websocket.recv(), timeout=10)
-                        except asyncio.TimeoutError:
-                            continue  # WS живе — просто не було повідомлень
-
+                        msg_raw = await websocket.recv()
                         msg = json.loads(msg_raw)
                         await asyncio.sleep(0.01)
 
@@ -747,6 +736,7 @@ async def monitor_cluster_trades():
                             "timestamp": timestamp
                         })
 
+                        # Очистка буфера
                         trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
 
                         bucket = round(price / CLUSTER_BUCKET_SIZE) * CLUSTER_BUCKET_SIZE
@@ -757,10 +747,8 @@ async def monitor_cluster_trades():
 
                         await asyncio.sleep(0)
 
-                        if time.time() - cluster_last_reset > 600:
-                            raise Exception("🔁 Manual WS restart to prevent timeout")
-
                         now = time.time()
+
                         if now - cluster_last_reset >= CLUSTER_INTERVAL and not cluster_is_processing:
                             cluster_is_processing = True
 
@@ -809,15 +797,13 @@ async def monitor_cluster_trades():
                                 signal = "BOOSTED_SHORT"
 
                             if signal is None and (total_buy > 40 or total_sell > 40):
-                                if int(time.time()) % 15 == 0:
-                                    send_message(
-                                        f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED"
-                                    )
-
-                            if total_sell > total_buy and total_sell >= 45:
-                                signal = "BOOSTED_SHORT"
-                            elif total_buy > total_sell and total_buy >= 45:
-                                signal = "BOOSTED_LONG"
+                                send_message(
+                                    f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED"
+                                )
+                                if total_sell > total_buy and total_sell >= 45:
+                                    signal = "BOOSTED_SHORT"
+                                elif total_buy > total_sell and total_buy >= 45:
+                                    signal = "BOOSTED_LONG"
 
                             if signal is not None and (
                                 (signal.startswith("LONG") and has_open_position("LONG")) or
@@ -884,17 +870,12 @@ async def monitor_cluster_trades():
                                     if is_cooldown_passed():
                                         await asyncio.to_thread(place_short, "BTCUSDT", TRADE_USD_AMOUNT)
 
-                        if now - last_ws_restart_time >= 60:
-                            send_message("⚠️ Cluster WS reconnecting")
-                            last_ws_restart_time = now
-                        else:
-                            if int(time.time()) % 10 == 0:
-                                send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
-
-                        await asyncio.sleep(5)
+                            cluster_data.clear()
+                            cluster_last_reset = now
+                            cluster_is_processing = False
 
                     except Exception as e:
-                        send_message(f"❌ Внутрішня помилка WebSocket: {e}")
+                        send_message(f"⚠️ Cluster WS error: {e}")
                         await asyncio.sleep(5)
 
         except Exception as e:
