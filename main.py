@@ -890,6 +890,15 @@ async def monitor_cluster_trades():
                                 send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
 
                             await asyncio.sleep(5)
+                while True:
+                    try:
+                        msg_raw = await asyncio.wait_for(websocket.recv(), timeout=10)
+                        msg = json.loads(msg_raw)
+                        await asyncio.sleep(0.01)
+                        ...
+                    except Exception as e:
+                        send_message(f"❌ WebSocket recv error: {e}")
+                        break
 
 
 
