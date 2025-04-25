@@ -24,9 +24,6 @@ async def healthcheck():
     return {"status": "running"}
 # 🔁 Cooldown між входами (щоб не спамити)
 last_trade_time = 0
-cached_oi = None
-cached_volume = None
-cached_vwap = None
 COOLDOWN_SECONDS = 90
 # 🔐 Змінні оточення
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -46,7 +43,6 @@ trailing_stops = {"LONG": None, "SHORT": None}
 cluster_data = defaultdict(lambda: {"buy": 0, "sell": 0})
 cluster_last_reset = time.time()
 cluster_is_processing = False
-last_ws_restart_time = 0  # ⏰ час останнього перепідключення WebSocket
 CLUSTER_BUCKET_SIZE = 10  # $10 діапазон
 CLUSTER_INTERVAL = 10  # кожні 10 сек оновлення
 
@@ -243,12 +239,6 @@ def is_flat_zone(symbol="BTCUSDT"):
     except Exception as e:
         send_message(f"❌ Flat zone error: {e}")
         return False
-def round_safe(value, digits=1):
-    try:
-        return round(value, digits)
-    except:
-        return "невідомо"
-
 def analyze_candle_gpt(candle, vwap, cluster_buy, cluster_sell, support_level=None, resistance_level=None):
     try:
         open_, high, low, close, volume = map(float, [
@@ -277,7 +267,7 @@ def analyze_candle_gpt(candle, vwap, cluster_buy, cluster_sell, support_level=No
 - Напрям: {direction} {shape} ({round(open_, 1)} → {round(close, 1)})
 - Обʼєм: ${round(volume):,}
 - Кластери: buy ${round(cluster_buy):,}, sell ${round(cluster_sell):,}
-- VWAP: {round_safe(vwap)}, close: {round_safe(close)}
+- VWAP: {round(vwap, 1)}, close: {round(close, 1)}
 - Tail/body ratio: {tail_ratio}
 - {support_text}
 - {resistance_text}
@@ -693,27 +683,6 @@ def place_short(symbol, usd):
 
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
-        
-        # ✅ Перед cluster-аналізом або поруч
-async def monitor_market_cache():
-    global cached_vwap, cached_volume, cached_oi
-    while True:
-        try:
-            cached_vwap = calculate_vwap("BTCUSDT")
-            cached_volume = get_volume("BTCUSDT")
-            cached_oi = get_open_interest("BTCUSDT")
-        except Exception as e:
-            send_message(f"❌ Cache update error: {e}")
-        await asyncio.sleep(10)
-async def ping_loop(ws):
-    while True:
-        try:
-            await ws.ping()
-            print(f"📡 Ping sent: {datetime.utcnow().isoformat()}")
-            await asyncio.sleep(20)
-        except Exception as e:
-            send_message(f"⚠️ Ping loop stopped: {e}")
-            break
 
 async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing
@@ -722,17 +691,13 @@ async def monitor_cluster_trades():
     while True:
         try:
             async with websockets.connect(uri) as websocket:
-                asyncio.create_task(ping_loop(websocket))
-
                 last_impulse = {"side": None, "volume": 0, "timestamp": 0}
                 trade_buffer = []
                 buffer_duration = 5  # секунд
 
                 while True:
                     try:
-                        msg_raw = await asyncio.wait_for(websocket.recv(), timeout=10)
-                        msg = json.loads(msg_raw)
-                        await asyncio.sleep(0.01)
+                        msg = json.loads(await websocket.recv())
                         price = float(msg['p'])
                         qty = float(msg['q'])
                         is_sell = msg['m']
@@ -753,18 +718,10 @@ async def monitor_cluster_trades():
                         else:
                             cluster_data[bucket]['buy'] += qty
 
-                        await asyncio.sleep(0)
-                        
-                        # Примусовий перезапуск WebSocket кожні 10 хв
-                        if time.time() - cluster_last_reset > 600:
-                           raise Exception("🔁 Manual WS restart to prevent timeout")
-
-
-
                         now = time.time()
                         if now - cluster_last_reset >= CLUSTER_INTERVAL and not cluster_is_processing:
                             cluster_is_processing = True
-                            
+
                             strongest_bucket = max(cluster_data.items(), key=lambda x: x[1]["buy"] + x[1]["sell"])
                             total_buy = strongest_bucket[1]["buy"]
                             total_sell = strongest_bucket[1]["sell"]
@@ -778,7 +735,7 @@ async def monitor_cluster_trades():
                                 "close": last_candle[4],
                                 "volume": last_candle[5]
                             }
-                            vwap_now = cached_vwap
+                            vwap_now = calculate_vwap("BTCUSDT")
 
                             gpt_candle_result = analyze_candle_gpt(
                                 candle=candle_dict,
@@ -851,20 +808,13 @@ async def monitor_cluster_trades():
 
                             if signal:
                                 news = get_latest_news()
-                                oi = cached_oi
-                                volume = cached_volume
+                                oi = get_open_interest("BTCUSDT")
+                                volume = get_volume("BTCUSDT")
 
                                 cluster_direction_info = f"Кластерний напрям: Buy {buy_ratio:.1f}%, Sell {sell_ratio:.1f}%"
 
                                 candles = get_candle_summary("BTCUSDT")
                                 walls = get_orderbook_snapshot("BTCUSDT")
-                                
-                                if not is_cooldown_passed():
-                                   send_message("⏳ Пропущено GPT-аналіз — cooldown не минув")
-                                   cluster_data.clear()
-                                   cluster_last_reset = time.time()
-                                   cluster_is_processing = False
-                                   continue
 
                                 decision = await ask_gpt_trade_with_all_context(
                                     signal,
@@ -890,8 +840,19 @@ async def monitor_cluster_trades():
                                     else:
                                         send_message("⏳ Пропущено SHORT — cooldown не минув")
 
-                        
-            
+                            cluster_data.clear()
+                            cluster_last_reset = now
+                            cluster_is_processing = False
+
+                    except Exception as e:
+                        send_message(f"⚠️ Cluster WS error: {e}")
+                        await asyncio.sleep(5)
+
+        except Exception as e:
+            send_message(f"⚠️ Cluster WS reconnecting: {e}")
+            await asyncio.sleep(5)
+
+        await asyncio.sleep(60)
 # 📬 Webhook для TradingView
 
 @app.post("/webhook")
@@ -912,13 +873,9 @@ async def webhook(req: Request):
             send_message(f"⚠️ Невідомий сигнал: {signal}")
             return {"error": "Invalid signal"}
 
-        oi = cached_oi
-        volume = cached_volume
+        oi = get_open_interest("BTCUSDT")
+        volume = get_volume("BTCUSDT")
         news = get_latest_news()
-        if not oi or not volume:
-           send_message("⚠️ Дані кешу ще не прогріті — пропущено webhook.")
-           return {"error": "Cache not ready"}
-
 
         delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
         last_open_interest = oi
@@ -1059,11 +1016,11 @@ async def monitor_trailing_stops():
 # ✅ Запуск моніторів GPT при старті FastAPI
 # 🤖 Автоматичний аналіз без сигналу (щохвилини)
 async def monitor_auto_signals():
-    global last_open_interest, cached_oi, cached_volume
+    global last_open_interest
     while True:
         try:
-            oi = cached_oi
-            volume = cached_volume
+            oi = get_open_interest("BTCUSDT")
+            volume = get_volume("BTCUSDT")
             news = get_latest_news()
 
             if not oi or not volume:
@@ -1101,7 +1058,6 @@ async def monitor_auto_signals():
 @app.on_event("startup")
 async def start_all_monitors():
     try:
-        asyncio.create_task(monitor_market_cache())
         asyncio.create_task(monitor_cluster_trades())
         asyncio.create_task(monitor_trailing_stops())
         asyncio.create_task(monitor_auto_signals())
