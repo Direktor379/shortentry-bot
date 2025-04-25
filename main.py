@@ -740,7 +740,12 @@ async def monitor_cluster_trades():
                         else:
                             cluster_data[bucket]['buy'] += qty
 
-                        await asyncio.sleep(0.05)
+                        await asyncio.sleep(0)
+                        
+                        # Примусовий перезапуск WebSocket кожні 10 хв
+                        if time.time() - cluster_last_reset > 600:
+                        raise Exception("🔁 Manual WS restart to prevent timeout")
+
 
 
                         now = time.time()
