@@ -891,16 +891,36 @@ async def monitor_cluster_trades():
 
                             await asyncio.sleep(5)
                 while True:
-                    try:
-                        msg_raw = await asyncio.wait_for(websocket.recv(), timeout=10)
-                        msg = json.loads(msg_raw)
-                        await asyncio.sleep(0.01)
-                        ...
-                    except Exception as e:
-                        send_message(f"❌ WebSocket recv error: {e}")
-                        break
+    try:
+        msg_raw = await asyncio.wait_for(websocket.recv(), timeout=10)
+        msg = json.loads(msg_raw)
+        await asyncio.sleep(0.01)
 
+        # 🧠 Тут додай свою логіку обробки трейду
+        price = float(msg['p'])
+        qty = float(msg['q'])
+        is_sell = msg['m']
+        timestamp = time.time()
 
+        trade_buffer.append({
+            "price": price,
+            "qty": qty,
+            "is_sell": is_sell,
+            "timestamp": timestamp
+        })
+
+        # Очистка старих
+        trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
+
+        bucket = round(price / CLUSTER_BUCKET_SIZE) * CLUSTER_BUCKET_SIZE
+        if is_sell:
+            cluster_data[bucket]['sell'] += qty
+        else:
+            cluster_data[bucket]['buy'] += qty
+
+    except Exception as e:
+        send_message(f"❌ WebSocket recv error: {e}")
+        break
 
 
             
