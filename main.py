@@ -562,12 +562,12 @@ async def monitor_cluster_trades():
                             total_buy = strongest_bucket[1]["buy"]
                             total_sell = strongest_bucket[1]["sell"]
 
-                            # GPT кластерний аналіз 5 свічок
-                            gpt_candle_result = analyze_candle_gpt(
+                            gpt_candle_result = await analyze_candle_gpt(
                                 vwap=cached_vwap,
                                 cluster_buy=total_buy,
                                 cluster_sell=total_sell
                             )
+
 
                             if gpt_candle_result["decision"] == "SKIP":
                                 cluster_data.clear()
