@@ -689,6 +689,18 @@ def place_short(symbol, usd):
 
     except Exception as e:
         send_message(f"❌ Binance SHORT error: {e}")
+        
+        # ✅ Перед cluster-аналізом або поруч
+async def monitor_market_cache():
+    global cached_vwap, cached_volume, cached_oi
+    while True:
+        try:
+            cached_vwap = calculate_vwap("BTCUSDT")
+            cached_volume = get_volume("BTCUSDT")
+            cached_oi = get_open_interest("BTCUSDT")
+        except Exception as e:
+            send_message(f"❌ Cache update error: {e}")
+        await asyncio.sleep(10)
 
 async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing
@@ -742,7 +754,7 @@ async def monitor_cluster_trades():
                                 "close": last_candle[4],
                                 "volume": last_candle[5]
                             }
-                            vwap_now = calculate_vwap("BTCUSDT")
+                            vwap_now = cached_vwap
 
                             gpt_candle_result = analyze_candle_gpt(
                                 candle=candle_dict,
@@ -815,8 +827,8 @@ async def monitor_cluster_trades():
 
                             if signal:
                                 news = get_latest_news()
-                                oi = get_open_interest("BTCUSDT")
-                                volume = get_volume("BTCUSDT")
+                                oi = cached_oi
+                                volume = cached_volume
 
                                 cluster_direction_info = f"Кластерний напрям: Buy {buy_ratio:.1f}%, Sell {sell_ratio:.1f}%"
 
