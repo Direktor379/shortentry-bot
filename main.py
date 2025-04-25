@@ -155,7 +155,7 @@ def get_latest_news():
         return "\n".join([item["title"] for item in news.get("results", [])[:3]])
     except Exception as e:
         send_message(f"❌ News error: {e}")
-        return "Новини не вдалося завантажити."
+        return "⚠️ Новини не вдалося завантажити."
 
 def get_open_interest(symbol="BTCUSDT"):
     try:
@@ -890,35 +890,7 @@ async def monitor_cluster_trades():
                                 send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
 
                             await asyncio.sleep(5)
-                while True:
-                        try:
-                            msg_raw = await asyncio.wait_for(websocket.recv(), timeout=10)
-                            msg = json.loads(msg_raw)
-                            await asyncio.sleep(0.01)
-                    
-                            price = float(msg['p'])
-                            qty = float(msg['q'])
-                            is_sell = msg['m']
-                            timestamp = time.time()
-                    
-                            trade_buffer.append({
-                                "price": price,
-                                "qty": qty,
-                                "is_sell": is_sell,
-                                "timestamp": timestamp
-                            })
-                    
-                            trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
-                    
-                            bucket = round(price / CLUSTER_BUCKET_SIZE) * CLUSTER_BUCKET_SIZE
-                            if is_sell:
-                                cluster_data[bucket]['sell'] += qty
-                            else:
-                                cluster_data[bucket]['buy'] += qty
-                    
-                        except Exception as e:
-                            send_message(f"❌ WebSocket recv error: {e}")
-                            break
+
 
 
 
