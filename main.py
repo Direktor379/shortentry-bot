@@ -239,6 +239,12 @@ def is_flat_zone(symbol="BTCUSDT"):
     except Exception as e:
         send_message(f"❌ Flat zone error: {e}")
         return False
+        def round_safe(value, digits=1):
+    try:
+        return round(value, digits)
+    except:
+        return "невідомо"
+
 def analyze_candle_gpt(candle, vwap, cluster_buy, cluster_sell, support_level=None, resistance_level=None):
     try:
         open_, high, low, close, volume = map(float, [
@@ -267,7 +273,7 @@ def analyze_candle_gpt(candle, vwap, cluster_buy, cluster_sell, support_level=No
 - Напрям: {direction} {shape} ({round(open_, 1)} → {round(close, 1)})
 - Обʼєм: ${round(volume):,}
 - Кластери: buy ${round(cluster_buy):,}, sell ${round(cluster_sell):,}
-- VWAP: {round(vwap, 1)}, close: {round(close, 1)}
+- VWAP: {round_safe(vwap)}, close: {round_safe(close)}
 - Tail/body ratio: {tail_ratio}
 - {support_text}
 - {resistance_text}
