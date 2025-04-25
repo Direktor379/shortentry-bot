@@ -815,8 +815,15 @@ async def monitor_cluster_trades():
 
                                 candles = get_candle_summary("BTCUSDT")
                                 walls = get_orderbook_snapshot("BTCUSDT")
+                                
+                                if not is_cooldown_passed():
+                                   send_message("⏳ Пропущено GPT-аналіз — cooldown не минув")
+                                   cluster_data.clear()
+                                   cluster_last_reset = time.time()
+                                   cluster_is_processing = False
+                                   continue
 
-                                decision = await ask_gpt_trade_with_all_context(
+                               decision = await ask_gpt_trade_with_all_context(
                                     signal,
                                     f"{cluster_direction_info}\n\nСвічки:\n{candles}\n\nСтіни:\n{walls}\n\n{news}",
                                     oi, 0, volume
