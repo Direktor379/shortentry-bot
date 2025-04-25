@@ -714,7 +714,7 @@ async def monitor_cluster_trades():
     while True:
         try:
             async with websockets.connect(uri) as websocket:
-            
+
                 last_impulse = {"side": None, "volume": 0, "timestamp": 0}
                 trade_buffer = []
                 buffer_duration = 5  # секунд
@@ -800,7 +800,7 @@ async def monitor_cluster_trades():
                                 signal = "BOOSTED_SHORT"
 
                             if signal is None and (total_buy > 40 or total_sell > 40):
-                                if int(time.time()) % 15 == 0:  # фільтр частоти
+                                if int(time.time()) % 15 == 0:  # антиспам
                                     send_message(
                                         f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED"
                                     )
@@ -882,7 +882,7 @@ async def monitor_cluster_trades():
                             send_message("⚠️ Cluster WS reconnecting")
                             last_ws_restart_time = now
                         else:
-                            if int(time.time()) % 10 == 0:  # не спамити щосекунди
+                            if int(time.time()) % 10 == 0:
                                 send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
 
                         await asyncio.sleep(5)
@@ -894,6 +894,7 @@ async def monitor_cluster_trades():
         except Exception as e:
             send_message(f"❌ Зовнішня помилка WebSocket: {e}")
             await asyncio.sleep(15)
+
             
 # 📬 Webhook для TradingView
 
