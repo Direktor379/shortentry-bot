@@ -641,15 +641,15 @@ async def monitor_cluster_trades():
                         await asyncio.sleep(5)
 
         except Exception as e:
-    global last_ws_error_time
-    now = time.time()
-
-    if "1011" in str(e) or "timeout" in str(e):
-        if now - last_ws_error_time > 60:  # ⏳ сповіщення лише 1 раз на хвилину
-            send_message("⚠️ WS 1011 / timeout — перепідключення...")
-            last_ws_error_time = now
-    else:
-        send_message(f"❌ Зовнішня помилка WebSocket: {e}")
+            global last_ws_error_time
+            now = time.time()
+        
+            if "1011" in str(e) or "timeout" in str(e):
+                if now - last_ws_error_time > 60:  # ⏳ сповіщення лише 1 раз на хвилину
+                    send_message("⚠️ WS 1011 / timeout — перепідключення...")
+                    last_ws_error_time = now
+            else:
+                send_message(f"❌ Зовнішня помилка WebSocket: {e}")
 
     await asyncio.sleep(10)
 
