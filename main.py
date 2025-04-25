@@ -548,6 +548,29 @@ def place_long(symbol, usd):
                     send_message("🔁 Закрито SHORT перед LONG")
                 except Exception as e:
                     send_message(f"⚠️ Не вдалося закрити SHORT перед LONG: {e} — продовжуємо")
+                    except Exception as e:
+    send_message(f"⚠️ Не вдалося закрити SHORT перед LONG: {e} — продовжуємо")
+
+    # 🔁 Повертаємо STOP назад на SHORT
+    try:
+        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        sl = round(entry * 1.005, 2)
+        cancel_existing_stop_order("SHORT")
+        binance_client.futures_create_order(
+            symbol=symbol,
+            side='BUY',
+            type='STOP_MARKET',
+            stopPrice=sl,
+            closePosition=True,
+            timeInForce="GTC",
+            positionSide='SHORT'
+        )
+        send_message(f"🛡 Повернено SL для SHORT на {sl}")
+    except Exception as sl_e:
+        send_message(f"⚠️ Не вдалося повернути SL для SHORT: {sl_e}")
+
+    return
+
 
             # 🔐 Перевіряємо ще раз
             if has_open_position("SHORT"):
@@ -610,7 +633,31 @@ def place_short(symbol, usd):
                     send_message("🔁 Закрито LONG перед SHORT")
                 except Exception as e:
                     send_message(f"⚠️ Не вдалося закрити LONG перед SHORT: {e} — продовжуємо")
+                    except Exception as e:
+    send_message(f"⚠️ Не вдалося закрити LONG перед SHORT: {e} — продовжуємо")
 
+    # 🔁 Повертаємо STOP назад на LONG
+    try:
+        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+        sl = round(entry * 0.995, 2)
+        cancel_existing_stop_order("LONG")
+        binance_client.futures_create_order(
+            symbol=symbol,
+            side='SELL',
+            type='STOP_MARKET',
+            stopPrice=sl,
+            closePosition=True,
+            timeInForce="GTC",
+            positionSide='LONG'
+        )
+        send_message(f"🛡 Повернено SL для LONG на {sl}")
+    except Exception as sl_e:
+        send_message(f"⚠️ Не вдалося повернути SL для LONG: {sl_e}")
+
+    return
+
+
+            
             # 🔐 Перевірка: якщо LONG досі не закрита — зупиняємось
             if has_open_position("LONG"):
                 send_message("❌ LONG позиція досі активна — не відкриваємо SHORT")
