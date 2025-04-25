@@ -1049,7 +1049,7 @@ async def monitor_trailing_stops():
 # ✅ Запуск моніторів GPT при старті FastAPI
 # 🤖 Автоматичний аналіз без сигналу (щохвилини)
 async def monitor_auto_signals():
-    global last_open_interest
+    global last_open_interest, cached_oi, cached_volume
     while True:
         try:
             oi = cached_oi
