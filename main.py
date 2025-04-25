@@ -893,9 +893,9 @@ async def monitor_cluster_trades():
 
 
 
-        except Exception as e:
-            send_message(f"❌ Зовнішня помилка WebSocket: {e}")
-            await asyncio.sleep(10)
+    except Exception as e:
+        send_message(f"❌ Зовнішня помилка WebSocket: {e}")
+        await asyncio.sleep(10)
 
             
 # 📬 Webhook для TradingView
