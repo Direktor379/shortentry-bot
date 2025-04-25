@@ -985,4 +985,45 @@ async def start_all_monitors():
         send_message("✅ Бот ScalpGPT успішно стартував і монітори запущено.")
     except Exception as e:
         send_message(f"❌ Помилка при старті бота: {e}")
+        from fastapi import Request
+
+@app.post("/webhook")
+async def webhook(req: Request):
+    try:
+        data = await req.json()
+        signal = data.get("message", "").strip().upper()
+        send_message(f"📩 Отримано сигнал: {signal}")
+
+        if signal not in ["LONG", "SHORT", "BOOSTED_LONG", "BOOSTED_SHORT"]:
+            send_message(f"⚠️ Невідомий сигнал: {signal}")
+            return {"error": "Invalid signal"}
+
+        # Беремо дані з кешу
+        oi = cached_oi
+        volume = cached_volume
+        news = get_latest_news()
+
+        if not oi or not volume:
+            send_message("⚠️ Дані кешу ще не прогріті — пропущено webhook.")
+            return {"error": "Cache not ready"}
+
+        delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
+        global last_open_interest
+        last_open_interest = oi
+
+        send_message(f"📊 OI: {oi:,.0f} | Volume: {volume} | ΔOI: {delta:.2f}%")
+
+        decision = await ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
+        send_message(f"🤖 GPT вирішив: {decision}")
+
+        if decision in ["LONG", "BOOSTED_LONG"]:
+            await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+        elif decision in ["SHORT", "BOOSTED_SHORT"]:
+            await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+
+        return {"ok": True}
+    except Exception as e:
+        send_message(f"❌ Webhook error: {e}")
+        return {"error": str(e)}
+
 
