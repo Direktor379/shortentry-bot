@@ -481,6 +481,9 @@ async def monitor_cluster_trades():
         try:
             async with websockets.connect(uri) as websocket:
                 last_impulse = {"side": None, "volume": 0, "timestamp": 0}
+                global last_ws_error_time
+                last_ws_error_time = 0
+
                 trade_buffer = []
                 buffer_duration = 5  # секунд
 
@@ -638,8 +641,18 @@ async def monitor_cluster_trades():
                         await asyncio.sleep(5)
 
         except Exception as e:
-            send_message(f"❌ Зовнішня помилка WebSocket: {e}")
-            await asyncio.sleep(15)
+    global last_ws_error_time
+    now = time.time()
+
+    if "1011" in str(e) or "timeout" in str(e):
+        if now - last_ws_error_time > 60:  # ⏳ сповіщення лише 1 раз на хвилину
+            send_message("⚠️ WS 1011 / timeout — перепідключення...")
+            last_ws_error_time = now
+    else:
+        send_message(f"❌ Зовнішня помилка WebSocket: {e}")
+
+    await asyncio.sleep(10)
+
 # 📈 Отримання кількості відкритої позиції
 def get_current_position_qty(side):
     try:
