@@ -239,7 +239,7 @@ def is_flat_zone(symbol="BTCUSDT"):
     except Exception as e:
         send_message(f"❌ Flat zone error: {e}")
         return False
-        def round_safe(value, digits=1):
+def round_safe(value, digits=1):
     try:
         return round(value, digits)
     except:
