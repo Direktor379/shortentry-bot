@@ -704,6 +704,13 @@ async def monitor_market_cache():
         except Exception as e:
             send_message(f"❌ Cache update error: {e}")
         await asyncio.sleep(10)
+async def ping_loop(ws):
+    while True:
+        try:
+            await ws.ping()
+            await asyncio.sleep(20)
+        except:
+            break  # вихід, якщо WebSocket впав або закрився
 
 async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing
@@ -712,13 +719,16 @@ async def monitor_cluster_trades():
     while True:
         try:
             async with websockets.connect(uri, ping_interval=20, ping_timeout=10) as websocket:
+                asyncio.create_task(ping_loop(websocket))
+
                 last_impulse = {"side": None, "volume": 0, "timestamp": 0}
                 trade_buffer = []
                 buffer_duration = 5  # секунд
 
                 while True:
                     try:
-                        msg = json.loads(await websocket.recv())
+                        msg_raw = await asyncio.wait_for(websocket.recv(), timeout=10)
+                        msg = json.loads(msg_raw)
                         await asyncio.sleep(0.01)
                         price = float(msg['p'])
                         qty = float(msg['q'])
