@@ -722,8 +722,12 @@ async def monitor_cluster_trades():
                 while True:
                     try:
                         msg_raw = await asyncio.wait_for(websocket.recv(), timeout=10)
-                        msg = json.loads(msg_raw)
-                        await asyncio.sleep(0.01)
+                    except asyncio.TimeoutError:
+                        continue  # просто скіпаємо, не валимо цикл
+                    
+                    msg = json.loads(msg_raw)
+                    await asyncio.sleep(0.01)
+
 
                         price = float(msg['p'])
                         qty = float(msg['q'])
