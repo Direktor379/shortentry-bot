@@ -636,10 +636,7 @@ async def monitor_cluster_trades():
                             cluster_last_reset = now
                             cluster_is_processing = False
 
-                    except Exception as e:
-                        send_message(f"⚠️ Cluster WS error: {e}")
-                        await asyncio.sleep(5)
-
+        
                     except Exception as e:
                         global last_ws_error_time
                         now = time.time()
