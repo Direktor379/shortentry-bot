@@ -894,7 +894,7 @@ async def monitor_cluster_trades():
                             cluster_last_reset = now
                             cluster_is_processing = False
 
-                    except Exception as e:
+                   
                         try:
                             now = time.time()
                             global last_ws_restart_time
