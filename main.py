@@ -895,11 +895,11 @@ async def monitor_cluster_trades():
                             cluster_is_processing = False
 
                        except Exception as e:
-                            try:
-                                now = time.time()
-                                global last_ws_restart_time
+                           try:
+                               now = time.time()
+                               global last_ws_restart_time
                         
-                                if now - last_ws_restart_time >= 60:
+                               if now - last_ws_restart_time >= 60:
                                     send_message(f"⚠️ Cluster WS reconnecting: {e}")
                                     last_ws_restart_time = now
                                 else:
@@ -907,9 +907,9 @@ async def monitor_cluster_trades():
                         
                                 await asyncio.sleep(5)
                         
-                            except Exception as inner_e:
-                                send_message(f"❌ Reconnect block error: {inner_e}")
-                                pass
+                           except Exception as inner_e:
+                               send_message(f"❌ Reconnect block error: {inner_e}")
+                               pass
 
             
 # 📬 Webhook для TradingView
