@@ -902,9 +902,13 @@ async def webhook(req: Request):
             send_message(f"⚠️ Невідомий сигнал: {signal}")
             return {"error": "Invalid signal"}
 
-        oi = get_open_interest("BTCUSDT")
-        volume = get_volume("BTCUSDT")
+        oi = cached_oi
+        volume = cached_volume
         news = get_latest_news()
+        if not oi or not volume:
+    send_message("⚠️ Дані кешу ще не прогріті — пропущено webhook.")
+    return {"error": "Cache not ready"}
+
 
         delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
         last_open_interest = oi
