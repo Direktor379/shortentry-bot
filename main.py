@@ -744,7 +744,7 @@ async def monitor_cluster_trades():
                         
                         # Примусовий перезапуск WebSocket кожні 10 хв
                         if time.time() - cluster_last_reset > 600:
-                        raise Exception("🔁 Manual WS restart to prevent timeout")
+                           raise Exception("🔁 Manual WS restart to prevent timeout")
 
 
 
