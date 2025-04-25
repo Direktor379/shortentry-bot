@@ -878,18 +878,6 @@ async def monitor_cluster_trades():
                                     else:
                                         send_message("⏳ Пропущено SHORT — cooldown не минув")
     
-                            now = time.time()
-                            global last_ws_restart_time
-    
-                            if now - last_ws_restart_time >= 60:
-                                send_message(f"⚠️ Cluster WS reconnecting")
-                                last_ws_restart_time = now
-                            else:
-                                send_message("⏳ Cluster WS перезапуск пропущено (захист від спаму)")
-    
-                            await asyncio.sleep(5)
-
-
 
             
 # 📬 Webhook для TradingView
