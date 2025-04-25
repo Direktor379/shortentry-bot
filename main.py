@@ -505,7 +505,7 @@ async def monitor_cluster_trades():
                         # Очистка буфера від старих трейдів
                         trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
 
-                        bucket = round(price / CLUSTER_BUCKET_SIZE) * CLUSTER_BUCKET_SIZE
+                        bucket = round(price / CONFIG["CLUSTER_BUCKET_SIZE"]) * CONFIG["CLUSTER_BUCKET_SIZE"]
                         if is_sell:
                             cluster_data[bucket]['sell'] += qty
                         else:
@@ -514,7 +514,7 @@ async def monitor_cluster_trades():
                         now = time.time()
 
                         # 🔥 Перевірка часу кластера
-                        if now - cluster_last_reset >= CLUSTER_INTERVAL and not cluster_is_processing:
+                        if now - cluster_last_reset >= CONFIG["CLUSTER_INTERVAL"] and not cluster_is_processing:
                             cluster_is_processing = True
 
                             strongest_bucket = max(cluster_data.items(), key=lambda x: x[1]["buy"] + x[1]["sell"])
