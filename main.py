@@ -355,6 +355,17 @@ def round_safe(value, digits=1):
         return round(value, digits)
     except:
         return "невідомо"
+# ♻️ Фонове оновлення кешу ринку (OI, volume, VWAP)
+async def monitor_market_cache():
+    global cached_vwap, cached_volume, cached_oi
+    while True:
+        try:
+            cached_vwap = calculate_vwap("BTCUSDT")
+            cached_volume = get_volume("BTCUSDT")
+            cached_oi = get_open_interest("BTCUSDT")
+        except Exception as e:
+            send_message(f"❌ Cache update error: {e}")
+        await asyncio.sleep(10)
 
 # 🧠 Аналіз останніх 5 свічок + кластерів + VWAP → GPT рішення
 def analyze_candle_gpt(vwap, cluster_buy, cluster_sell):
