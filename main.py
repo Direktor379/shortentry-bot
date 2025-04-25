@@ -1007,8 +1007,8 @@ async def webhook(req: Request):
             send_message("⚠️ Дані кешу ще не прогріті — пропущено webhook.")
             return {"error": "Cache not ready"}
 
+        global last_open_interest  # 🧠 Виправлено: піднято сюди
         delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
-        global last_open_interest
         last_open_interest = oi
 
         send_message(f"📊 OI: {oi:,.0f} | Volume: {volume} | ΔOI: {delta:.2f}%")
@@ -1025,5 +1025,6 @@ async def webhook(req: Request):
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
+
 
 
