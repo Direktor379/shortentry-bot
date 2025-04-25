@@ -155,7 +155,7 @@ def get_latest_news():
         return "\n".join([item["title"] for item in news.get("results", [])[:3]])
     except Exception as e:
         send_message(f"❌ News error: {e}")
-        return ⚠️ Новини не вдалося завантажити."
+        return ⚠ Новини не вдалося завантажити."
 
 def get_open_interest(symbol="BTCUSDT"):
     try:
