@@ -65,7 +65,7 @@ DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
 
 # 🔌 Ініціалізація клієнтів
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
-client = OpenAI(api_key=_
+client = OpenAI(api_key=OPENAI_API_KEY)
 # 🔍 Перевірка наявності важливих ENV-змінних
 def check_env_variables():
     required_vars = [
