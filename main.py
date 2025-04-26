@@ -1028,6 +1028,7 @@ import io
 # 📬 Обробка команди /analyze без графіка
 @app.post("/analyze")
 async def analyze(req: Request):
+    global last_open_interest
     try:
         data = await req.json()
         message = data.get("message", "")
@@ -1101,7 +1102,7 @@ Buy {buy_volume / (buy_volume + sell_volume) * 100:.1f}% / Sell {sell_volume / (
             send_message("⚠️ Дані кешу ще не прогріті — пропущено webhook.")
             return {"error": "Cache not ready"}
 
-        global last_open_interest
+      
         delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
         last_open_interest = oi
 
