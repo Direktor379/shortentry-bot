@@ -518,7 +518,7 @@ def get_orderbook_snapshot(symbol="BTCUSDT", depth=50):
         return "⚠️ Дані про стіни недоступні"
 # 📡 Моніторинг кластерів через WebSocket
 async def monitor_cluster_trades():
-    global cluster_last_reset, cluster_is_processing, last_ws_error_time
+    global cluster_last_reset, cluster_is_processing, last_ws_error_time, last_skip_message_time
     uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
     last_ws_error_time = 0  # антиспам для WS помилок
     last_skip_message_time = 0
