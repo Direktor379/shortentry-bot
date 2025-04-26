@@ -80,6 +80,9 @@ def check_env_variables():
 def init_runtime_state():
     global last_trade_time, cached_oi, cached_volume, cached_vwap, last_open_interest
     global trailing_stops, cluster_data, cluster_last_reset, cluster_is_processing, last_ws_restart_time
+    global open_position_lock
+
+    open_position_lock = asyncio.Lock()
     last_trade_time = 0
     cached_oi = None
     cached_volume = None
@@ -90,6 +93,7 @@ def init_runtime_state():
     cluster_last_reset = time.time()
     cluster_is_processing = False
     last_ws_restart_time = 0
+
 # 📬 Відправка повідомлення у Telegram
 def send_message(text: str):
     try:
@@ -108,9 +112,22 @@ def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
         sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheets()[0]
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         row = [now, type_, entry, tp, sl, qty, result or "", comment]
-        sheet.append_row(row, value_input_option='RAW')
+
+        # Додаємо retry логіку
+        retries = 3
+        for attempt in range(retries):
+            try:
+                sheet.append_row(row, value_input_option='RAW')
+                break  # Якщо успішно, виходимо
+            except Exception as e:
+                if attempt < retries - 1:
+                    time.sleep(2)  # Затримка перед наступною спробою
+                else:
+                    raise e  # Якщо остання спроба - кидаємо помилку
+
     except Exception as e:
         send_message(f"❌ Sheets error: {e}")
+
 
 # 📈 Оновлення результату угоди у Google Sheets
 def update_result_in_sheet(type_, result, pnl=None):
@@ -377,12 +394,23 @@ async def monitor_market_cache():
     global cached_vwap, cached_volume, cached_oi
     while True:
         try:
-            cached_vwap = calculate_vwap("BTCUSDT")
-            cached_volume = get_volume("BTCUSDT")
-            cached_oi = get_open_interest("BTCUSDT")
+            new_vwap = calculate_vwap("BTCUSDT")
+            new_volume = get_volume("BTCUSDT")
+            new_oi = get_open_interest("BTCUSDT")
+
+            # Перевірка на None
+            if new_vwap is not None and new_volume is not None and new_oi is not None:
+                cached_vwap = new_vwap
+                cached_volume = new_volume
+                cached_oi = new_oi
+            else:
+                send_message("⚠️ Попередження: Не вдалося оновити кеш ринку (VWAP, Volume або OI)")
+
         except Exception as e:
             send_message(f"❌ Cache update error: {e}")
+
         await asyncio.sleep(10)
+
         # 🕯️ Отримання короткого опису останніх 5 свічок
 def get_candle_summary(symbol="BTCUSDT", interval="1m", limit=5):
     try:
@@ -679,12 +707,13 @@ async def monitor_cluster_trades():
 
                                 if decision in ["LONG", "BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
                                     if not has_open_position("LONG") and is_cooldown_ready():
-                                        await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+                                        await place_long("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
                                         update_cooldown()
                                 elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
                                     if not has_open_position("SHORT") and is_cooldown_ready():
-                                        await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+                                        await place_short("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
                                         update_cooldown()
+
 
                             cluster_data.clear()
                             cluster_last_reset = now
@@ -790,114 +819,117 @@ async def monitor_trailing_stops():
 
         await asyncio.sleep(10)
 # 📈 Відкриття LONG угоди
-def place_long(symbol, usd):
-    if has_open_position("SHORT"):
-        qty_to_close = get_current_position_qty("SHORT")
-        if qty_to_close > 0:
-            if not DRY_RUN:
-                try:
-                    cancel_existing_stop_order("SHORT")
-                    binance_client.futures_create_order(
-                        symbol=symbol,
-                        side='BUY',
-                        type='MARKET',
-                        quantity=qty_to_close,
-                        reduceOnly=True,
-                        positionSide='SHORT'
-                    )
-                    send_message("🔁 Закрито SHORT перед LONG")
-                except Exception as e:
-                    send_message(f"⚠️ Не вдалося закрити SHORT перед LONG: {e} — продовжуємо")
-            else:
-                send_message("🤖 [DRY_RUN] Закрив SHORT перед LONG")
+async def place_long(symbol, usd):
+    async with open_position_lock:
+        if has_open_position("SHORT"):
+            qty_to_close = get_current_position_qty("SHORT")
+            if qty_to_close > 0:
+                if not DRY_RUN:
+                    try:
+                        cancel_existing_stop_order("SHORT")
+                        binance_client.futures_create_order(
+                            symbol=symbol,
+                            side='BUY',
+                            type='MARKET',
+                            quantity=qty_to_close,
+                            reduceOnly=True,
+                            positionSide='SHORT'
+                        )
+                        send_message("🔁 Закрито SHORT перед LONG")
+                    except Exception as e:
+                        send_message(f"⚠️ Не вдалося закрити SHORT перед LONG: {e} — продовжуємо")
+                else:
+                    send_message("🤖 [DRY_RUN] Закрив SHORT перед LONG")
 
-    if has_open_position("LONG"):
-        send_message("⚠️ Уже відкрита LONG позиція")
-        return
-
-    try:
-        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-        qty = round(usd / entry, 3)
-        if not qty:
-            send_message("❌ Не вдалося розрахувати кількість для LONG")
+        if has_open_position("LONG"):
+            send_message("⚠️ Уже відкрита LONG позиція")
             return
 
-        tp = round(entry * CONFIG["TP_SL"]["LONG"]["TP"], 2)
-        sl = round(entry * CONFIG["TP_SL"]["LONG"]["SL"], 2)
+        try:
+            entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+            qty = round(usd / entry, 3)
+            if not qty:
+                send_message("❌ Не вдалося розрахувати кількість для LONG")
+                return
 
-        cancel_existing_stop_order("LONG")
+            tp = round(entry * CONFIG["TP_SL"]["LONG"]["TP"], 2)
+            sl = round(entry * CONFIG["TP_SL"]["LONG"]["SL"], 2)
 
-        if DRY_RUN:
-            send_message(f"🤖 [DRY_RUN] LONG\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
-        else:
-            binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
-            binance_client.futures_create_order(
-                symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
-                stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG'
-            )
-            binance_client.futures_create_order(
-                symbol=symbol, side='SELL', type='STOP_MARKET',
-                stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG'
-            )
-            send_message(f"🟢 LONG OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+            cancel_existing_stop_order("LONG")
 
-    except Exception as e:
-        send_message(f"❌ Binance LONG error: {e}")
+            if DRY_RUN:
+                send_message(f"🤖 [DRY_RUN] LONG\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+            else:
+                binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
+                binance_client.futures_create_order(
+                    symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
+                    stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG'
+                )
+                binance_client.futures_create_order(
+                    symbol=symbol, side='SELL', type='STOP_MARKET',
+                    stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG'
+                )
+                send_message(f"🟢 LONG OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+
+        except Exception as e:
+            send_message(f"❌ Binance LONG error: {e}")
 
 # 📉 Відкриття SHORT угоди
-def place_short(symbol, usd):
-    if has_open_position("LONG"):
-        qty_to_close = get_current_position_qty("LONG")
-        if qty_to_close > 0:
-            if not DRY_RUN:
-                try:
-                    cancel_existing_stop_order("LONG")
-                    binance_client.futures_create_order(
-                        symbol=symbol,
-                        side='SELL',
-                        type='MARKET',
-                        quantity=qty_to_close,
-                        reduceOnly=True,
-                        positionSide='LONG'
-                    )
-                    send_message("🔁 Закрито LONG перед SHORT")
-                except Exception as e:
-                    send_message(f"⚠️ Не вдалося закрити LONG перед SHORT: {e} — продовжуємо")
-            else:
-                send_message("🤖 [DRY_RUN] Закрив LONG перед SHORT")
+async def place_short(symbol, usd):
+    async with open_position_lock:
+        if has_open_position("LONG"):
+            qty_to_close = get_current_position_qty("LONG")
+            if qty_to_close > 0:
+                if not DRY_RUN:
+                    try:
+                        cancel_existing_stop_order("LONG")
+                        binance_client.futures_create_order(
+                            symbol=symbol,
+                            side='SELL',
+                            type='MARKET',
+                            quantity=qty_to_close,
+                            reduceOnly=True,
+                            positionSide='LONG'
+                        )
+                        send_message("🔁 Закрито LONG перед SHORT")
+                    except Exception as e:
+                        send_message(f"⚠️ Не вдалося закрити LONG перед SHORT: {e} — продовжуємо")
+                else:
+                    send_message("🤖 [DRY_RUN] Закрив LONG перед SHORT")
 
-    if has_open_position("SHORT"):
-        send_message("⚠️ Уже відкрита SHORT позиція")
-        return
-
-    try:
-        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-        qty = round(usd / entry, 3)
-        if not qty:
-            send_message("❌ Не вдалося розрахувати кількість для SHORT")
+        if has_open_position("SHORT"):
+            send_message("⚠️ Уже відкрита SHORT позиція")
             return
 
-        tp = round(entry * CONFIG["TP_SL"]["SHORT"]["TP"], 2)
-        sl = round(entry * CONFIG["TP_SL"]["SHORT"]["SL"], 2)
+        try:
+            entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+            qty = round(usd / entry, 3)
+            if not qty:
+                send_message("❌ Не вдалося розрахувати кількість для SHORT")
+                return
 
-        cancel_existing_stop_order("SHORT")
+            tp = round(entry * CONFIG["TP_SL"]["SHORT"]["TP"], 2)
+            sl = round(entry * CONFIG["TP_SL"]["SHORT"]["SL"], 2)
 
-        if DRY_RUN:
-            send_message(f"🤖 [DRY_RUN] SHORT\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
-        else:
-            binance_client.futures_create_order(symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
-            binance_client.futures_create_order(
-                symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
-                stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT'
-            )
-            binance_client.futures_create_order(
-                symbol=symbol, side='BUY', type='STOP_MARKET',
-                stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT'
-            )
-            send_message(f"🔴 SHORT OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+            cancel_existing_stop_order("SHORT")
 
-    except Exception as e:
-        send_message(f"❌ Binance SHORT error: {e}")
+            if DRY_RUN:
+                send_message(f"🤖 [DRY_RUN] SHORT\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+            else:
+                binance_client.futures_create_order(symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
+                binance_client.futures_create_order(
+                    symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
+                    stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT'
+                )
+                binance_client.futures_create_order(
+                    symbol=symbol, side='BUY', type='STOP_MARKET',
+                    stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT'
+                )
+                send_message(f"🔴 SHORT OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+
+        except Exception as e:
+            send_message(f"❌ Binance SHORT error: {e}")
+            
 # 📒 Підключення до Google Sheets
 def get_gspread_client():
     try:
@@ -929,29 +961,32 @@ async def handle_signal(signal):
     # Якщо немає позиції - відкриваємо будь-який сигнал
     if side_now is None:
         if "LONG" in signal:
-            await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            await place_long("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
             update_cooldown()
         elif "SHORT" in signal:
-            await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            await place_short("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
             update_cooldown()
         return
 
+
     # Якщо є протилежна позиція і супер сильний сигнал
-    if side_now != signal_direction and "SUPER" in signal:
-        send_message(f"🔄 Супер сигнал! Переворот {side_now} → {signal_direction}")
-        await asyncio.to_thread(close_all_positions_and_orders)
+if side_now != signal_direction and "SUPER" in signal:
+    send_message(f"🔄 Супер сигнал! Переворот {side_now} → {signal_direction}")
+    await close_all_positions_and_orders()
 
-        await asyncio.sleep(0.5)  # маленька пауза для біржі
+    await asyncio.sleep(0.5)  # маленька пауза для біржі
 
-        if "LONG" in signal:
-            await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
-            update_cooldown()
-        elif "SHORT" in signal:
-            await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
-            update_cooldown()
+    if "LONG" in signal:
+        await place_long("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+        update_cooldown()
+    elif "SHORT" in signal:
+        await place_short("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+        update_cooldown()
 
-    else:
-        send_message(f"⚡ Слабкий або той самий напрямок сигнал ({signal}). Тримаємо існуючу позицію {side_now}.")
+
+
+else:
+    send_message(f"⚡ Слабкий або той самий напрямок сигнал ({signal}). Тримаємо існуючу позицію {side_now}.")
 
 # 🧹 Закриття всіх позицій і відкритих ордерів
 def close_all_positions_and_orders():
