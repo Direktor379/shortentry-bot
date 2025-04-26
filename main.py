@@ -662,16 +662,18 @@ async def monitor_cluster_trades():
 
                                 send_message(f"💥 {signal} — кластер {strongest_bucket[0]} | Buy: {round(total_buy)}, Sell: {round(total_sell)}")
                                 send_message(f"🤖 GPT кластер: {decision}")
-
-                                if "SUPER" in signal:
-                                    send_message(f"🚀 {signal}: домінація {'BUY' if 'LONG' in signal else 'SELL'} {round(max(buy_ratio, sell_ratio))}%")
-
                                 if decision in ["LONG", "BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
                                     if is_cooldown_passed():
+                                        send_message(f"🤪 Залітаю в {decision}!")
                                         await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+                                
                                 elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
                                     if is_cooldown_passed():
+                                        send_message(f"🤪 Залітаю в {decision}!")
                                         await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+
+
+                            
 
                             cluster_data.clear()
                             cluster_last_reset = now
