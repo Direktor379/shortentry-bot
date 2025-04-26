@@ -332,12 +332,13 @@ def get_volume(symbol="BTCUSDT"):
         send_message(f"❌ Volume error: {e}")
         return None
 
-# 📏 Розрахунок VWAP
-def calculate_vwap(symbol="BTCUSDT", interval="1m", limit=10):
+# 📏 Розрахунок VWAP з обробкою помилок
+def calculate_vwap(symbol="BTCUSDT", interval="1m", limit=20):
     try:
         candles = binance_client.futures_klines(symbol=symbol, interval=interval, limit=limit)
         total_volume = 0
         total_price_volume = 0
+
         for candle in candles:
             high = float(candle[2])
             low = float(candle[3])
@@ -346,10 +347,13 @@ def calculate_vwap(symbol="BTCUSDT", interval="1m", limit=10):
             typical_price = (high + low + close) / 3
             total_volume += volume
             total_price_volume += typical_price * volume
+
         return total_price_volume / total_volume if total_volume > 0 else None
+
     except Exception as e:
         send_message(f"❌ VWAP error: {e}")
         return None
+
 
 # 💤 Визначення флет-зони (чи рух занадто слабкий)
 def is_flat_zone(symbol="BTCUSDT"):
@@ -443,7 +447,7 @@ async def analyze_candle_gpt(vwap, cluster_buy, cluster_sell):
 Кластери:
 - Buy: ${round(cluster_buy):,}
 - Sell: ${round(cluster_sell):,}
-- VWAP: {round_safe(vwap)}
+VWAP: {round(vwap, 2) if vwap else "невідомо"}
 
 Оціни загальну ситуацію:
 - Чи є імпульс або хвиля?
