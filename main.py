@@ -678,7 +678,7 @@ async def monitor_cluster_trades():
         except Exception as e:
             send_message(f"❌ Зовнішня помилка WebSocket: {e}")
             await asyncio.sleep(15)
-)
+
 
 
 # 📈 Отримання кількості відкритої позиції
