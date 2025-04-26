@@ -912,6 +912,82 @@ def get_gspread_client():
     except Exception as e:
         send_message(f"❌ GSpread auth error: {e}")
         return None
+# 🧠 Професійна обробка сигналу: переворот тільки при SUPER_BOOSTED
+async def handle_signal(signal):
+    side_now = None
+    if has_open_position("LONG"):
+        side_now = "LONG"
+    elif has_open_position("SHORT"):
+        side_now = "SHORT"
+
+    signal_direction = None
+    if "LONG" in signal:
+        signal_direction = "LONG"
+    elif "SHORT" in signal:
+        signal_direction = "SHORT"
+
+    # Якщо немає позиції - відкриваємо будь-який сигнал
+    if side_now is None:
+        if "LONG" in signal:
+            await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            update_cooldown()
+        elif "SHORT" in signal:
+            await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            update_cooldown()
+        return
+
+    # Якщо є протилежна позиція і супер сильний сигнал
+    if side_now != signal_direction and "SUPER" in signal:
+        send_message(f"🔄 Супер сигнал! Переворот {side_now} → {signal_direction}")
+        await asyncio.to_thread(close_all_positions_and_orders)
+
+        await asyncio.sleep(0.5)  # маленька пауза для біржі
+
+        if "LONG" in signal:
+            await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            update_cooldown()
+        elif "SHORT" in signal:
+            await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            update_cooldown()
+
+    else:
+        send_message(f"⚡ Слабкий або той самий напрямок сигнал ({signal}). Тримаємо існуючу позицію {side_now}.")
+
+# 🧹 Закриття всіх позицій і відкритих ордерів
+def close_all_positions_and_orders():
+    try:
+        qty_long = get_current_position_qty("LONG")
+        qty_short = get_current_position_qty("SHORT")
+
+        if qty_long > 0:
+            binance_client.futures_create_order(
+                symbol="BTCUSDT",
+                side='SELL',
+                type='MARKET',
+                quantity=qty_long,
+                reduceOnly=True,
+                positionSide='LONG'
+            )
+            send_message(f"🔻 Закрито LONG позицію: {qty_long}")
+
+        if qty_short > 0:
+            binance_client.futures_create_order(
+                symbol="BTCUSDT",
+                side='BUY',
+                type='MARKET',
+                quantity=qty_short,
+                reduceOnly=True,
+                positionSide='SHORT'
+            )
+            send_message(f"🔺 Закрито SHORT позицію: {qty_short}")
+
+        open_orders = binance_client.futures_get_open_orders(symbol="BTCUSDT")
+        for order in open_orders:
+            binance_client.futures_cancel_order(symbol="BTCUSDT", orderId=order["orderId"])
+        send_message("🧹 Видалено всі відкриті стопи і тейки.")
+
+    except Exception as e:
+        send_message(f"❌ Close positions/orders error: {e}")
 
 # 🧠 Моніторинг закриття позицій + запис результатів у Google Sheets
 closed_positions_handled = set()
@@ -1055,14 +1131,7 @@ async def webhook(req: Request):
         decision = await ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
         send_message(f"🤖 GPT вирішив: {decision}")
 
-        if decision in ["LONG", "BOOSTED_LONG"]:
-            if not has_open_position("LONG") and is_cooldown_ready():
-                await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
-                update_cooldown()
-        elif decision in ["SHORT", "BOOSTED_SHORT"]:
-            if not has_open_position("SHORT") and is_cooldown_ready():
-                await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
-                update_cooldown()
+        await handle_signal(decision)
 
         return {"ok": True}
 
