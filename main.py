@@ -517,6 +517,47 @@ def get_orderbook_snapshot(symbol="BTCUSDT", depth=50):
         send_message(f"❌ Orderbook error: {e}")
         return "⚠️ Дані про стіни недоступні"
 # 📡 Моніторинг кластерів через WebSocket
+# 🔁 Перевірка чи пройшов cooldown
+def is_cooldown_ready():
+    now = time.time()
+    return now - last_trade_time >= CONFIG["COOLDOWN_SECONDS"]
+
+# ⏳ Оновлення cooldown таймера
+def update_cooldown():
+    global last_trade_time
+    last_trade_time = time.time()
+
+# 📈 Отримання кількості відкритої позиції
+def get_current_position_qty(side):
+    try:
+        positions = binance_client.futures_position_information(symbol="BTCUSDT")
+        for p in positions:
+            amt = float(p["positionAmt"])
+            if side == "LONG" and amt > 0:
+                return amt
+            elif side == "SHORT" and amt < 0:
+                return abs(amt)
+        return 0
+    except Exception as e:
+        send_message(f"❌ Position qty error: {e}")
+        return 0
+
+# 🧹 Перевірка чи є відкрита позиція
+def has_open_position(side):
+    try:
+        positions = binance_client.futures_position_information(symbol="BTCUSDT")
+        for p in positions:
+            qty = float(p["positionAmt"])
+            if side == "LONG" and qty > 0:
+                return True
+            elif side == "SHORT" and qty < 0:
+                return True
+        return False
+    except Exception as e:
+        send_message(f"❌ Position check error: {e}")
+        return False
+
+# 📡 Основний моніторинг кластерних сигналів
 async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing, last_ws_error_time, last_skip_message_time
     uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
@@ -548,7 +589,6 @@ async def monitor_cluster_trades():
                             "timestamp": timestamp
                         })
 
-                        # Очистка старих трейдів
                         trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
 
                         bucket = round(price / CONFIG["CLUSTER_BUCKET_SIZE"]) * CONFIG["CLUSTER_BUCKET_SIZE"]
@@ -574,7 +614,6 @@ async def monitor_cluster_trades():
 
                             if gpt_candle_result["decision"] == "SKIP":
                                 reason = gpt_candle_result.get("reason", "немає пояснення")
-                                now = time.time()
                                 if now - last_skip_message_time > 60:
                                     send_message(f"🚫 SKIP — {reason}")
                                     last_skip_message_time = now
@@ -608,14 +647,13 @@ async def monitor_cluster_trades():
                                     signal = "BOOSTED_LONG"
 
                             if signal:
-                                # Блокування протилежного входу після імпульсу
                                 if last_impulse["side"] == "BUY" and signal.startswith("SHORT") and \
-                                        last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
+                                   last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
                                     send_message("⏳ Відхилено SHORT — щойно був великий BUY")
                                     signal = None
 
                                 if last_impulse["side"] == "SELL" and signal.startswith("LONG") and \
-                                        last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
+                                   last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
                                     send_message("⏳ Відхилено LONG — щойно був великий SELL")
                                     signal = None
 
@@ -630,12 +668,6 @@ async def monitor_cluster_trades():
                                 candles = get_candle_summary("BTCUSDT")
                                 walls = get_orderbook_snapshot("BTCUSDT")
 
-                                if not is_cooldown_passed():
-                                    cluster_data.clear()
-                                    cluster_last_reset = now
-                                    cluster_is_processing = False
-                                    continue
-
                                 decision = await ask_gpt_trade_with_all_context(
                                     signal,
                                     f"Кластери: Buy {buy_ratio:.1f}%, Sell {sell_ratio:.1f}%\n\nСвічки:\n{candles}\n\nСтіни:\n{walls}\n\n{news}",
@@ -646,20 +678,13 @@ async def monitor_cluster_trades():
                                 send_message(f"🤖 GPT кластер: {decision}")
 
                                 if decision in ["LONG", "BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
-                                    if not has_open_position("LONG"):
-                                        if is_cooldown_passed():
-                                            send_message(f"🤪 Залітаю в {decision}!")
-                                            await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
-                                    else:
-                                        send_message(f"⚠️ LONG вже відкритий — пропускаємо повторний вхід.")
-
+                                    if not has_open_position("LONG") and is_cooldown_ready():
+                                        await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+                                        update_cooldown()
                                 elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
-                                    if not has_open_position("SHORT"):
-                                        if is_cooldown_passed():
-                                            send_message(f"🤪 Залітаю в {decision}!")
-                                            await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
-                                    else:
-                                        send_message(f"⚠️ SHORT вже відкритий — пропускаємо повторний вхід.")
+                                    if not has_open_position("SHORT") and is_cooldown_ready():
+                                        await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+                                        update_cooldown()
 
                             cluster_data.clear()
                             cluster_last_reset = now
@@ -679,46 +704,6 @@ async def monitor_cluster_trades():
             send_message(f"❌ Зовнішня помилка WebSocket: {e}")
             await asyncio.sleep(15)
 
-
-
-# 📈 Отримання кількості відкритої позиції
-def get_current_position_qty(side):
-    try:
-        positions = binance_client.futures_position_information(symbol="BTCUSDT")
-        for p in positions:
-            amt = float(p["positionAmt"])
-            if side == "LONG" and amt > 0:
-                return amt
-            elif side == "SHORT" and amt < 0:
-                return abs(amt)
-        return 0
-    except Exception as e:
-        send_message(f"❌ Position qty error: {e}")
-        return 0
-
-# 🧹 Перевірка чи є відкрита позиція
-def has_open_position(side):
-    try:
-        positions = binance_client.futures_position_information(symbol="BTCUSDT")
-        for p in positions:
-            qty = float(p["positionAmt"])
-            if side == "LONG" and qty > 0:
-                return True
-            elif side == "SHORT" and qty < 0:
-                return True
-        return False
-    except Exception as e:
-        send_message(f"❌ Position check error: {e}")
-        return False
-
-# 🔁 Перевірка чи пройшов cooldown перед відкриттям нової угоди
-def is_cooldown_passed():
-    global last_trade_time
-    now = time.time()
-    if now - last_trade_time >= CONFIG["COOLDOWN_SECONDS"]:
-        last_trade_time = now
-        return True
-    return False
 
 # 🧰 Скасування існуючого стоп-ордеру для сторони
 def cancel_existing_stop_order(side):
