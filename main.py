@@ -1035,14 +1035,14 @@ async def webhook(req: Request):
         oi = cached_oi
         volume = cached_volume
 
-        # 🔥 Гарантовано викликаємо новини без крашу
+        # 🔥 Безпечне отримання новин
         try:
             news = get_latest_news()
         except Exception as news_error:
             send_message(f"❌ News fallback error: {news_error}")
             news = "⚠️ Новини тимчасово недоступні."
 
-        if not oi or not volume:
+        if oi is None or volume is None:
             send_message("⚠️ Дані кешу ще не прогріті — пропущено webhook.")
             return {"error": "Cache not ready"}
 
@@ -1056,11 +1056,16 @@ async def webhook(req: Request):
         send_message(f"🤖 GPT вирішив: {decision}")
 
         if decision in ["LONG", "BOOSTED_LONG"]:
-            await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            if not has_open_position("LONG") and is_cooldown_ready():
+                await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+                update_cooldown()
         elif decision in ["SHORT", "BOOSTED_SHORT"]:
-            await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            if not has_open_position("SHORT") and is_cooldown_ready():
+                await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+                update_cooldown()
 
         return {"ok": True}
+
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
