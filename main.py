@@ -578,7 +578,7 @@ async def monitor_cluster_trades():
                                 reason = gpt_candle_result.get("reason", "немає пояснення")
                             
                                 # надсилаємо тільки якщо минуло більше 60 секунд з останнього повідомлення SKIP
-                                global last_skip_message_time
+                                
                                 now = time.time()
                                 if now - last_skip_message_time > 60:
                                     send_message(f"🚫 SKIP — {reason}")
