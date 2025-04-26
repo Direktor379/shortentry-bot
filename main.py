@@ -521,6 +521,7 @@ async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing, last_ws_error_time
     uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
     last_ws_error_time = 0  # антиспам для WS помилок
+    last_skip_message_time = 0
 
     while True:
         try:
@@ -574,11 +575,21 @@ async def monitor_cluster_trades():
 
 
                             if gpt_candle_result["decision"] == "SKIP":
+                                reason = gpt_candle_result.get("reason", "немає пояснення")
+                            
+                                # надсилаємо тільки якщо минуло більше 60 секунд з останнього повідомлення SKIP
+                                global last_skip_message_time
+                                now = time.time()
+                                if now - last_skip_message_time > 60:
+                                    send_message(f"🚫 SKIP — {reason}")
+                                    last_skip_message_time = now
+                            
                                 cluster_data.clear()
-                                cluster_last_reset = time.time()
+                                cluster_last_reset = now
                                 cluster_is_processing = False
                                 await asyncio.sleep(1)
                                 continue
+
 
                             buy_volume = sum(t["qty"] for t in trade_buffer if not t["is_sell"])
                             sell_volume = sum(t["qty"] for t in trade_buffer if t["is_sell"])
