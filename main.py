@@ -821,7 +821,6 @@ async def monitor_trailing_stops():
 # 📈 Відкриття LONG угоди
 async def place_long(symbol, usd):
     async with open_position_lock:
-        # Перевіряємо і закриваємо SHORT перед LONG
         if has_open_position("SHORT"):
             qty_to_close = get_current_position_qty("SHORT")
             if qty_to_close > 0:
@@ -837,16 +836,16 @@ async def place_long(symbol, usd):
                             positionSide='SHORT'
                         )
                         send_message("🔁 Закрито SHORT перед LONG")
-                        await asyncio.sleep(1)  # Даємо час біржі оновити статус
+                        await asyncio.sleep(1)
                     except Exception as e:
                         send_message(f"⚠️ Не вдалося закрити SHORT перед LONG: {e} — пробуємо далі")
                         await asyncio.sleep(1)
                 else:
                     send_message("🤖 [DRY_RUN] Закрив SHORT перед LONG")
 
-        # Додаткова перевірка після спроби закриття
+        # 🛡 Перевірка перед відкриттям
         if has_open_position("SHORT"):
-            send_message("⚠️ SHORT ще відкритий — не відкриваємо LONG!")
+            send_message("❗ SHORT ще відкритий — НЕ відкриваємо LONG!")
             return
 
         if has_open_position("LONG"):
@@ -886,7 +885,6 @@ async def place_long(symbol, usd):
 # 📉 Відкриття SHORT угоди
 async def place_short(symbol, usd):
     async with open_position_lock:
-        # Перевіряємо і закриваємо LONG перед SHORT
         if has_open_position("LONG"):
             qty_to_close = get_current_position_qty("LONG")
             if qty_to_close > 0:
@@ -909,9 +907,9 @@ async def place_short(symbol, usd):
                 else:
                     send_message("🤖 [DRY_RUN] Закрив LONG перед SHORT")
 
-        # Додаткова перевірка після спроби закриття
+        # 🛡 Перевірка перед відкриттям
         if has_open_position("LONG"):
-            send_message("⚠️ LONG ще відкритий — не відкриваємо SHORT!")
+            send_message("❗ LONG ще відкритий — НЕ відкриваємо SHORT!")
             return
 
         if has_open_position("SHORT"):
@@ -946,6 +944,7 @@ async def place_short(symbol, usd):
 
         except Exception as e:
             send_message(f"❌ Binance SHORT error: {e}")
+
 
             
 # 📒 Підключення до Google Sheets
