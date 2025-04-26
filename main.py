@@ -1022,62 +1022,6 @@ async def start_all_monitors():
 # 📬 Webhook приймає сигнали з TradingView або Postman
 @app.post("/webhook")
 async def webhook(req: Request):
-    import matplotlib.pyplot as plt
-import io
-
-# 📬 Обробка команди /analyze без графіка
-@app.post("/analyze")
-async def analyze(req: Request):
-    global last_open_interest
-    try:
-        data = await req.json()
-        message = data.get("message", "")
-
-        if message != "/analyze":
-            return {"error": "Invalid command"}
-
-        # --- Збираємо дані ---
-        candles = get_candle_summary("BTCUSDT")
-        walls = get_orderbook_snapshot("BTCUSDT")
-        oi = cached_oi or get_open_interest("BTCUSDT")
-        volume = cached_volume or get_volume("BTCUSDT")
-
-        buy_volume = 0
-        sell_volume = 0
-        if volume:
-            buy_volume = volume * 0.6  # умовно
-            sell_volume = volume * 0.4
-
-        oi_delta = 0
-        global last_open_interest
-        if last_open_interest and oi:
-            oi_delta = ((oi - last_open_interest) / last_open_interest) * 100
-        last_open_interest = oi
-
-        # --- Формуємо текст ---
-        text = f"""
-🕯️ Свічки:
-{candles}
-
-📚 Глибина ринку:
-{walls}
-
-📈 Open Interest: {oi:,.0f}
-ΔOI: {oi_delta:.2f}%
-
-⚡ Домінація:
-Buy {buy_volume / (buy_volume + sell_volume) * 100:.1f}% / Sell {sell_volume / (buy_volume + sell_volume) * 100:.1f}%
-"""
-
-        send_message(text.strip())
-
-        return {"ok": True}
-
-    except Exception as e:
-        send_message(f"❌ Analyze error: {e}")
-        return {"error": str(e)}
-
-
     try:
         data = await req.json()
         signal = data.get("message", "").strip().upper()
@@ -1102,7 +1046,7 @@ Buy {buy_volume / (buy_volume + sell_volume) * 100:.1f}% / Sell {sell_volume / (
             send_message("⚠️ Дані кешу ще не прогріті — пропущено webhook.")
             return {"error": "Cache not ready"}
 
-      
+        global last_open_interest
         delta = ((oi - last_open_interest) / last_open_interest) * 100 if last_open_interest and oi else 0
         last_open_interest = oi
 
@@ -1125,7 +1069,3 @@ Buy {buy_volume / (buy_volume + sell_volume) * 100:.1f}% / Sell {sell_volume / (
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
-
-
-
-
