@@ -968,25 +968,21 @@ async def handle_signal(signal):
             update_cooldown()
         return
 
+    # Якщо є позиція і супер сильний протилежний сигнал - переворот
+    if side_now != signal_direction and "SUPER" in signal:
+        send_message(f"🔄 Супер сигнал! Переворот {side_now} → {signal_direction}")
+        await close_all_positions_and_orders()
 
-    # Якщо є протилежна позиція і супер сильний сигнал
-if side_now != signal_direction and "SUPER" in signal:
-    send_message(f"🔄 Супер сигнал! Переворот {side_now} → {signal_direction}")
-    await close_all_positions_and_orders()
+        await asyncio.sleep(0.5)  # маленька пауза для біржі
 
-    await asyncio.sleep(0.5)  # маленька пауза для біржі
-
-    if "LONG" in signal:
-        await place_long("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
-        update_cooldown()
-    elif "SHORT" in signal:
-        await place_short("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
-        update_cooldown()
-
-
-
-else:
-    send_message(f"⚡ Слабкий або той самий напрямок сигнал ({signal}). Тримаємо існуючу позицію {side_now}.")
+        if "LONG" in signal:
+            await place_long("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            update_cooldown()
+        elif "SHORT" in signal:
+            await place_short("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            update_cooldown()
+    else:
+        send_message(f"⚡ Слабкий або той самий напрямок сигнал ({signal}). Тримаємо існуючу позицію {side_now}.")
 
 # 🧹 Закриття всіх позицій і відкритих ордерів
 def close_all_positions_and_orders():
