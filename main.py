@@ -789,7 +789,7 @@ async def monitor_trailing_stops():
                             (side == "SHORT" and new_sl < trailing_stops[side])
                         ):
                             trailing_stops[side] = new_sl
-                            cancel_existing_stop_order(side)
+                            cancel_existing_orders(side)
                             binance_client.futures_create_order(
                                 symbol="BTCUSDT",
                                 side='SELL' if side == "LONG" else 'BUY',
@@ -839,7 +839,7 @@ async def place_long(symbol, usd):
             if qty_to_close > 0:
                 if not DRY_RUN:
                     try:
-                        cancel_existing_stop_order("SHORT")
+                        cancel_existing_orders("SHORT")
                         binance_client.futures_create_order(
                             symbol=symbol,
                             side='BUY',
@@ -875,7 +875,7 @@ async def place_long(symbol, usd):
             tp = round(entry * CONFIG["TP_SL"]["LONG"]["TP"], 2)
             sl = round(entry * CONFIG["TP_SL"]["LONG"]["SL"], 2)
 
-            cancel_existing_stop_order("LONG")
+            cancel_existing_orders("LONG")
 
             if DRY_RUN:
                 send_message(f"🤖 [DRY_RUN] LONG\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
@@ -903,7 +903,7 @@ async def place_short(symbol, usd):
             if qty_to_close > 0:
                 if not DRY_RUN:
                     try:
-                        cancel_existing_stop_order("LONG")
+                        cancel_existing_orders("LONG")
                         binance_client.futures_create_order(
                             symbol=symbol,
                             side='SELL',
@@ -939,7 +939,7 @@ async def place_short(symbol, usd):
             tp = round(entry * CONFIG["TP_SL"]["SHORT"]["TP"], 2)
             sl = round(entry * CONFIG["TP_SL"]["SHORT"]["SL"], 2)
 
-            cancel_existing_stop_order("SHORT")
+            cancel_existing_orders("SHORT"))
 
             if DRY_RUN:
                 send_message(f"🤖 [DRY_RUN] SHORT\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
