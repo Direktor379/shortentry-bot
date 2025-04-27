@@ -815,7 +815,7 @@ async def monitor_trailing_stops():
                         send_message(f"💰 Часткове закриття: закрито {qty_close}, залишено {qty_remain}")
 
                         breakeven_sl = round(entry * (1 + CONFIG["BREAKEVEN_SL_OFFSET"] if side == "LONG" else 1 - CONFIG["BREAKEVEN_SL_OFFSET"]), 2)
-                        cancel_existing_stop_order(side)
+                        cancel_existing_orders(side)
                         binance_client.futures_create_order(
                             symbol="BTCUSDT",
                             side='SELL' if side == "LONG" else 'BUY',
