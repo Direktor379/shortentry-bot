@@ -939,7 +939,8 @@ async def place_short(symbol, usd):
             tp = round(entry * CONFIG["TP_SL"]["SHORT"]["TP"], 2)
             sl = round(entry * CONFIG["TP_SL"]["SHORT"]["SL"], 2)
 
-            cancel_existing_orders("SHORT"))
+            cancel_existing_orders("SHORT")
+
 
             if DRY_RUN:
                 send_message(f"🤖 [DRY_RUN] SHORT\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
