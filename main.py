@@ -80,6 +80,9 @@ def check_env_variables():
 def init_runtime_state():
     global last_trade_time, cached_oi, cached_volume, cached_vwap, last_open_interest
     global trailing_stops, cluster_data, cluster_last_reset, cluster_is_processing, last_ws_restart_time
+    global open_position_lock
+
+    open_position_lock = asyncio.Lock()
     last_trade_time = 0
     cached_oi = None
     cached_volume = None
@@ -90,6 +93,7 @@ def init_runtime_state():
     cluster_last_reset = time.time()
     cluster_is_processing = False
     last_ws_restart_time = 0
+
 # 📬 Відправка повідомлення у Telegram
 def send_message(text: str):
     try:
@@ -108,9 +112,22 @@ def log_to_sheet(type_, entry, tp, sl, qty, result=None, comment=""):
         sheet = gclient.open_by_key(GOOGLE_SHEET_ID).worksheets()[0]
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         row = [now, type_, entry, tp, sl, qty, result or "", comment]
-        sheet.append_row(row, value_input_option='RAW')
+
+        # Додаємо retry логіку
+        retries = 3
+        for attempt in range(retries):
+            try:
+                sheet.append_row(row, value_input_option='RAW')
+                break  # Якщо успішно, виходимо
+            except Exception as e:
+                if attempt < retries - 1:
+                    time.sleep(2)  # Затримка перед наступною спробою
+                else:
+                    raise e  # Якщо остання спроба - кидаємо помилку
+
     except Exception as e:
         send_message(f"❌ Sheets error: {e}")
+
 
 # 📈 Оновлення результату угоди у Google Sheets
 def update_result_in_sheet(type_, result, pnl=None):
@@ -262,16 +279,19 @@ Open Interest: {oi_text}
 """
 
         res = await asyncio.to_thread(
-            client.chat.completions.create,
-            model="gpt-4-turbo",
-            messages=[
-                {"role": "system", "content": (
-                    "Ти досвідчений скальп-трейдер. "
-                    "Вибери лише одне слово з цього списку: LONG, BOOSTED_LONG, SHORT, BOOSTED_SHORT або SKIP. "
-                    "Не додавай пояснень. Відповідай тільки одним словом.")},
-                {"role": "user", "content": prompt}
-            ]
+            lambda: client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": (
+                        "Ти досвідчений скальп-трейдер. "
+                        "Вибери лише одне слово з цього списку: LONG, BOOSTED_LONG, SHORT, BOOSTED_SHORT або SKIP. "
+                        "Не додавай пояснень. Відповідай тільки одним словом."
+                    )},
+                    {"role": "user", "content": prompt}
+                ]
+            )
         )
+        
 
         gpt_answer = res.choices[0].message.content.strip()
         send_message(f"📤 GPT: {gpt_answer}")
@@ -329,12 +349,13 @@ def get_volume(symbol="BTCUSDT"):
         send_message(f"❌ Volume error: {e}")
         return None
 
-# 📏 Розрахунок VWAP
-def calculate_vwap(symbol="BTCUSDT", interval="1m", limit=10):
+# 📏 Розрахунок VWAP з обробкою помилок
+def calculate_vwap(symbol="BTCUSDT", interval="1m", limit=20):
     try:
         candles = binance_client.futures_klines(symbol=symbol, interval=interval, limit=limit)
         total_volume = 0
         total_price_volume = 0
+
         for candle in candles:
             high = float(candle[2])
             low = float(candle[3])
@@ -343,10 +364,13 @@ def calculate_vwap(symbol="BTCUSDT", interval="1m", limit=10):
             typical_price = (high + low + close) / 3
             total_volume += volume
             total_price_volume += typical_price * volume
+
         return total_price_volume / total_volume if total_volume > 0 else None
+
     except Exception as e:
         send_message(f"❌ VWAP error: {e}")
         return None
+
 
 # 💤 Визначення флет-зони (чи рух занадто слабкий)
 def is_flat_zone(symbol="BTCUSDT"):
@@ -370,12 +394,23 @@ async def monitor_market_cache():
     global cached_vwap, cached_volume, cached_oi
     while True:
         try:
-            cached_vwap = calculate_vwap("BTCUSDT")
-            cached_volume = get_volume("BTCUSDT")
-            cached_oi = get_open_interest("BTCUSDT")
+            new_vwap = calculate_vwap("BTCUSDT")
+            new_volume = get_volume("BTCUSDT")
+            new_oi = get_open_interest("BTCUSDT")
+
+            # Перевірка на None
+            if new_vwap is not None and new_volume is not None and new_oi is not None:
+                cached_vwap = new_vwap
+                cached_volume = new_volume
+                cached_oi = new_oi
+            else:
+                send_message("⚠️ Попередження: Не вдалося оновити кеш ринку (VWAP, Volume або OI)")
+
         except Exception as e:
             send_message(f"❌ Cache update error: {e}")
+
         await asyncio.sleep(10)
+
         # 🕯️ Отримання короткого опису останніх 5 свічок
 def get_candle_summary(symbol="BTCUSDT", interval="1m", limit=5):
     try:
@@ -399,7 +434,7 @@ def get_candle_summary(symbol="BTCUSDT", interval="1m", limit=5):
         return "⚠️ Дані свічок недоступні"
 
 # 🧠 Аналіз останніх 5 свічок + кластерів + VWAP → GPT рішення
-def analyze_candle_gpt(vwap, cluster_buy, cluster_sell):
+async def analyze_candle_gpt(vwap, cluster_buy, cluster_sell):
     try:
         # 🕯️ Завантаження останніх 5 свічок
         candles_raw = binance_client.futures_klines(symbol="BTCUSDT", interval="1m", limit=5)
@@ -440,7 +475,7 @@ def analyze_candle_gpt(vwap, cluster_buy, cluster_sell):
 Кластери:
 - Buy: ${round(cluster_buy):,}
 - Sell: ${round(cluster_sell):,}
-- VWAP: {round_safe(vwap)}
+VWAP: {round(vwap, 2) if vwap else "невідомо"}
 
 Оціни загальну ситуацію:
 - Чи є імпульс або хвиля?
@@ -454,13 +489,18 @@ BOOSTED — потужний імпульс, сильний рух
 Відповідь строго у форматі: SKIP / NORMAL / BOOSTED — і коротке пояснення.
 """
 
-        response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[
-                {"role": "system", "content": "Ти професійний скальпер. Вибирай тільки одне: SKIP / NORMAL / BOOSTED. Додай дуже коротке пояснення."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,
+        response = await asyncio.to_thread(
+            lambda: client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": (
+                        "Ти професійний скальпер. "
+                        "Вибери тільки одне: SKIP / NORMAL / BOOSTED. Додай дуже коротке пояснення."
+                    )},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3
+            )
         )
 
         reply = response.choices[0].message.content.strip()
@@ -480,6 +520,7 @@ BOOSTED — потужний імпульс, сильний рух
             "decision": "SKIP",
             "reason": f"GPT error: {e}"
         }
+
 # 🧱 Отримання snapshot order book (стіни покупців і продавців)
 def get_orderbook_snapshot(symbol="BTCUSDT", depth=50):
     try:
@@ -504,169 +545,15 @@ def get_orderbook_snapshot(symbol="BTCUSDT", depth=50):
         send_message(f"❌ Orderbook error: {e}")
         return "⚠️ Дані про стіни недоступні"
 # 📡 Моніторинг кластерів через WebSocket
-async def monitor_cluster_trades():
-    global cluster_last_reset, cluster_is_processing, last_ws_error_time
-    uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
-    last_ws_error_time = 0  # антиспам для WS помилок
+# 🔁 Перевірка чи пройшов cooldown
+def is_cooldown_ready():
+    now = time.time()
+    return now - last_trade_time >= CONFIG["COOLDOWN_SECONDS"]
 
-    while True:
-        try:
-            async with websockets.connect(uri) as websocket:
-                last_impulse = {"side": None, "volume": 0, "timestamp": 0}
-                trade_buffer = []
-                buffer_duration = 5  # секунд
-
-                while True:
-                    try:
-                        msg_raw = await websocket.recv()
-                        msg = json.loads(msg_raw)
-                        await asyncio.sleep(0.01)
-
-                        price = float(msg['p'])
-                        qty = float(msg['q'])
-                        is_sell = msg['m']
-                        timestamp = time.time()
-
-                        trade_buffer.append({
-                            "price": price,
-                            "qty": qty,
-                            "is_sell": is_sell,
-                            "timestamp": timestamp
-                        })
-
-                        # Очистка старих трейдів
-                        trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
-
-                        bucket = round(price / CONFIG["CLUSTER_BUCKET_SIZE"]) * CONFIG["CLUSTER_BUCKET_SIZE"]
-                        if is_sell:
-                            cluster_data[bucket]['sell'] += qty
-                        else:
-                            cluster_data[bucket]['buy'] += qty
-
-                        now = time.time()
-
-                        # 🧠 Обробка кожні CLUSTER_INTERVAL сек
-                        if now - cluster_last_reset >= CONFIG["CLUSTER_INTERVAL"] and not cluster_is_processing:
-                            cluster_is_processing = True
-
-                            strongest_bucket = max(cluster_data.items(), key=lambda x: x[1]["buy"] + x[1]["sell"])
-                            total_buy = strongest_bucket[1]["buy"]
-                            total_sell = strongest_bucket[1]["sell"]
-
-                            # GPT кластерний аналіз 5 свічок
-                            gpt_candle_result = analyze_candle_gpt(
-                                vwap=cached_vwap,
-                                cluster_buy=total_buy,
-                                cluster_sell=total_sell
-                            )
-
-                            if gpt_candle_result["decision"] == "SKIP":
-                                cluster_data.clear()
-                                cluster_last_reset = time.time()
-                                cluster_is_processing = False
-                                await asyncio.sleep(1)
-                                continue
-
-                            buy_volume = sum(t["qty"] for t in trade_buffer if not t["is_sell"])
-                            sell_volume = sum(t["qty"] for t in trade_buffer if t["is_sell"])
-                            buy_ratio = (buy_volume / (buy_volume + sell_volume)) * 100 if (buy_volume + sell_volume) > 0 else 0
-                            sell_ratio = 100 - buy_ratio
-
-                            signal = None
-                            if buy_ratio >= CONFIG["SUPER_BOOST_RATIO"] and total_buy >= CONFIG["SUPER_BOOST_VOLUME"]:
-                                signal = "SUPER_BOOSTED_LONG"
-                            elif sell_ratio >= CONFIG["SUPER_BOOST_RATIO"] and total_sell >= CONFIG["SUPER_BOOST_VOLUME"]:
-                                signal = "SUPER_BOOSTED_SHORT"
-                            elif total_buy >= CONFIG["BOOST_THRESHOLD"]:
-                                signal = "BOOSTED_LONG"
-                            elif total_sell >= CONFIG["BOOST_THRESHOLD"]:
-                                signal = "BOOSTED_SHORT"
-
-                            if signal is None and (total_buy > CONFIG["MIN_CLUSTER_ALERT"] or total_sell > CONFIG["MIN_CLUSTER_ALERT"]):
-                                send_message(
-                                    f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED"
-                                )
-                                if total_sell > total_buy and total_sell >= CONFIG["ALT_BOOST_THRESHOLD"]:
-                                    signal = "BOOSTED_SHORT"
-                                elif total_buy > total_sell and total_buy >= CONFIG["ALT_BOOST_THRESHOLD"]:
-                                    signal = "BOOSTED_LONG"
-
-                            if signal and (
-                                (signal.startswith("LONG") and has_open_position("LONG")) or
-                                (signal.startswith("SHORT") and has_open_position("SHORT"))
-                            ):
-                                cluster_data.clear()
-                                cluster_last_reset = time.time()
-                                cluster_is_processing = False
-                                await asyncio.sleep(1)
-                                continue
-
-                            # Блокування протилежного входу після імпульсу
-                            if signal and last_impulse["side"] == "BUY" and signal.startswith("SHORT") and \
-                                    last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
-                                send_message("⏳ Відхилено SHORT — щойно був великий BUY")
-                                signal = None
-
-                            if signal and last_impulse["side"] == "SELL" and signal.startswith("LONG") and \
-                                    last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
-                                send_message("⏳ Відхилено LONG — щойно був великий SELL")
-                                signal = None
-
-                            if signal in ["BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
-                                last_impulse = {"side": "BUY", "volume": total_buy, "timestamp": now}
-                            elif signal in ["BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
-                                last_impulse = {"side": "SELL", "volume": total_sell, "timestamp": now}
-
-                            if signal:
-                                news = get_latest_news()
-                                oi = cached_oi
-                                volume = cached_volume
-                                candles = get_candle_summary("BTCUSDT")
-                                walls = get_orderbook_snapshot("BTCUSDT")
-
-                                if not is_cooldown_passed():
-                                    cluster_data.clear()
-                                    cluster_last_reset = time.time()
-                                    cluster_is_processing = False
-                                    continue
-
-                                decision = await ask_gpt_trade_with_all_context(
-                                    signal,
-                                    f"Кластери: Buy {buy_ratio:.1f}%, Sell {sell_ratio:.1f}%\n\nСвічки:\n{candles}\n\nСтіни:\n{walls}\n\n{news}",
-                                    oi, 0, volume
-                                )
-
-                                send_message(f"💥 {signal} — кластер {strongest_bucket[0]} | Buy: {round(total_buy)}, Sell: {round(total_sell)}")
-                                send_message(f"🤖 GPT кластер: {decision}")
-
-                                if "SUPER" in signal:
-                                    send_message(f"🚀 {signal}: домінація {'BUY' if 'LONG' in signal else 'SELL'} {round(max(buy_ratio, sell_ratio))}%")
-
-                                if decision in ["LONG", "BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
-                                    if is_cooldown_passed():
-                                        await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
-                                elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
-                                    if is_cooldown_passed():
-                                        await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
-
-                            cluster_data.clear()
-                            cluster_last_reset = now
-                            cluster_is_processing = False
-
-                    except Exception as e:
-                        if "1011" in str(e) or "timeout" in str(e):
-                            now = time.time()
-                            if now - last_ws_error_time > 60:
-                                send_message("⚠️ WS 1011 / timeout — перепідключення...")
-                                last_ws_error_time = now
-                        else:
-                            send_message(f"⚠️ Cluster WS error: {e}")
-                        await asyncio.sleep(10)
-
-        except Exception as e:
-            send_message(f"❌ Зовнішня помилка WebSocket: {e}")
-            await asyncio.sleep(15)
-
+# ⏳ Оновлення cooldown таймера
+def update_cooldown():
+    global last_trade_time
+    last_trade_time = time.time()
 
 # 📈 Отримання кількості відкритої позиції
 def get_current_position_qty(side):
@@ -698,14 +585,154 @@ def has_open_position(side):
         send_message(f"❌ Position check error: {e}")
         return False
 
-# 🔁 Перевірка чи пройшов cooldown перед відкриттям нової угоди
-def is_cooldown_passed():
-    global last_trade_time
-    now = time.time()
-    if now - last_trade_time >= CONFIG["COOLDOWN_SECONDS"]:
-        last_trade_time = now
-        return True
-    return False
+# 📡 Основний моніторинг кластерних сигналів
+async def monitor_cluster_trades():
+    global cluster_last_reset, cluster_is_processing, last_ws_error_time, last_skip_message_time
+    uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
+    last_ws_error_time = 0
+    last_skip_message_time = 0
+
+    while True:
+        try:
+            async with websockets.connect(uri) as websocket:
+                last_impulse = {"side": None, "volume": 0, "timestamp": 0}
+                trade_buffer = []
+                buffer_duration = 5  # секунд
+
+                while True:
+                    try:
+                        msg_raw = await websocket.recv()
+                        msg = json.loads(msg_raw)
+                        await asyncio.sleep(0.01)
+
+                        price = float(msg['p'])
+                        qty = float(msg['q'])
+                        is_sell = msg['m']
+                        timestamp = time.time()
+
+                        trade_buffer.append({
+                            "price": price,
+                            "qty": qty,
+                            "is_sell": is_sell,
+                            "timestamp": timestamp
+                        })
+
+                        trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
+
+                        bucket = round(price / CONFIG["CLUSTER_BUCKET_SIZE"]) * CONFIG["CLUSTER_BUCKET_SIZE"]
+                        if is_sell:
+                            cluster_data[bucket]['sell'] += qty
+                        else:
+                            cluster_data[bucket]['buy'] += qty
+
+                        now = time.time()
+
+                        if now - cluster_last_reset >= CONFIG["CLUSTER_INTERVAL"] and not cluster_is_processing:
+                            cluster_is_processing = True
+
+                            strongest_bucket = max(cluster_data.items(), key=lambda x: x[1]["buy"] + x[1]["sell"])
+                            total_buy = strongest_bucket[1]["buy"]
+                            total_sell = strongest_bucket[1]["sell"]
+
+                            gpt_candle_result = await analyze_candle_gpt(
+                                vwap=cached_vwap,
+                                cluster_buy=total_buy,
+                                cluster_sell=total_sell
+                            )
+
+                            if gpt_candle_result["decision"] == "SKIP":
+                                reason = gpt_candle_result.get("reason", "немає пояснення")
+                                if now - last_skip_message_time > 60:
+                                    send_message(f"🚫 SKIP — {reason}")
+                                    last_skip_message_time = now
+
+                                cluster_data.clear()
+                                cluster_last_reset = now
+                                cluster_is_processing = False
+                                await asyncio.sleep(1)
+                                continue
+
+                            buy_volume = sum(t["qty"] for t in trade_buffer if not t["is_sell"])
+                            sell_volume = sum(t["qty"] for t in trade_buffer if t["is_sell"])
+                            buy_ratio = (buy_volume / (buy_volume + sell_volume)) * 100 if (buy_volume + sell_volume) > 0 else 0
+                            sell_ratio = 100 - buy_ratio
+
+                            signal = None
+                            if buy_ratio >= CONFIG["SUPER_BOOST_RATIO"] and total_buy >= CONFIG["SUPER_BOOST_VOLUME"]:
+                                signal = "SUPER_BOOSTED_LONG"
+                            elif sell_ratio >= CONFIG["SUPER_BOOST_RATIO"] and total_sell >= CONFIG["SUPER_BOOST_VOLUME"]:
+                                signal = "SUPER_BOOSTED_SHORT"
+                            elif total_buy >= CONFIG["BOOST_THRESHOLD"]:
+                                signal = "BOOSTED_LONG"
+                            elif total_sell >= CONFIG["BOOST_THRESHOLD"]:
+                                signal = "BOOSTED_SHORT"
+
+                            if signal is None and (total_buy > CONFIG["MIN_CLUSTER_ALERT"] or total_sell > CONFIG["MIN_CLUSTER_ALERT"]):
+                                send_message(f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED")
+                                if total_sell > total_buy and total_sell >= CONFIG["ALT_BOOST_THRESHOLD"]:
+                                    signal = "BOOSTED_SHORT"
+                                elif total_buy > total_sell and total_buy >= CONFIG["ALT_BOOST_THRESHOLD"]:
+                                    signal = "BOOSTED_LONG"
+
+                            if signal:
+                                if last_impulse["side"] == "BUY" and signal.startswith("SHORT") and \
+                                   last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
+                                    send_message("⏳ Відхилено SHORT — щойно був великий BUY")
+                                    signal = None
+
+                                if last_impulse["side"] == "SELL" and signal.startswith("LONG") and \
+                                   last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
+                                    send_message("⏳ Відхилено LONG — щойно був великий SELL")
+                                    signal = None
+
+                                if signal in ["BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
+                                    last_impulse = {"side": "BUY", "volume": total_buy, "timestamp": now}
+                                elif signal in ["BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
+                                    last_impulse = {"side": "SELL", "volume": total_sell, "timestamp": now}
+
+                                news = get_latest_news()
+                                oi = cached_oi
+                                volume = cached_volume
+                                candles = get_candle_summary("BTCUSDT")
+                                walls = get_orderbook_snapshot("BTCUSDT")
+
+                                decision = await ask_gpt_trade_with_all_context(
+                                    signal,
+                                    f"Кластери: Buy {buy_ratio:.1f}%, Sell {sell_ratio:.1f}%\n\nСвічки:\n{candles}\n\nСтіни:\n{walls}\n\n{news}",
+                                    oi, 0, volume
+                                )
+
+                                send_message(f"💥 {signal} — кластер {strongest_bucket[0]} | Buy: {round(total_buy)}, Sell: {round(total_sell)}")
+                                send_message(f"🤖 GPT кластер: {decision}")
+
+                                if decision in ["LONG", "BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
+                                    if not has_open_position("LONG") and is_cooldown_ready():
+                                        await place_long("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+                                        update_cooldown()
+                                elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
+                                    if not has_open_position("SHORT") and is_cooldown_ready():
+                                        await place_short("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+                                        update_cooldown()
+
+
+                            cluster_data.clear()
+                            cluster_last_reset = now
+                            cluster_is_processing = False
+
+                    except Exception as e:
+                        if "1011" in str(e) or "timeout" in str(e):
+                            now = time.time()
+                            if now - last_ws_error_time > 60:
+                                send_message("⚠️ WS 1011 / timeout — перепідключення...")
+                                last_ws_error_time = now
+                        else:
+                            send_message(f"⚠️ Cluster WS error: {e}")
+                        await asyncio.sleep(10)
+
+        except Exception as e:
+            send_message(f"❌ Зовнішня помилка WebSocket: {e}")
+            await asyncio.sleep(15)
+
 
 # 🧰 Скасування існуючого стоп-ордеру для сторони
 def cancel_existing_stop_order(side):
@@ -792,114 +819,134 @@ async def monitor_trailing_stops():
 
         await asyncio.sleep(10)
 # 📈 Відкриття LONG угоди
-def place_long(symbol, usd):
-    if has_open_position("SHORT"):
-        qty_to_close = get_current_position_qty("SHORT")
-        if qty_to_close > 0:
-            if not DRY_RUN:
-                try:
-                    cancel_existing_stop_order("SHORT")
-                    binance_client.futures_create_order(
-                        symbol=symbol,
-                        side='BUY',
-                        type='MARKET',
-                        quantity=qty_to_close,
-                        reduceOnly=True,
-                        positionSide='SHORT'
-                    )
-                    send_message("🔁 Закрито SHORT перед LONG")
-                except Exception as e:
-                    send_message(f"⚠️ Не вдалося закрити SHORT перед LONG: {e} — продовжуємо")
-            else:
-                send_message("🤖 [DRY_RUN] Закрив SHORT перед LONG")
+async def place_long(symbol, usd):
+    async with open_position_lock:
+        if has_open_position("SHORT"):
+            qty_to_close = get_current_position_qty("SHORT")
+            if qty_to_close > 0:
+                if not DRY_RUN:
+                    try:
+                        cancel_existing_stop_order("SHORT")
+                        binance_client.futures_create_order(
+                            symbol=symbol,
+                            side='BUY',
+                            type='MARKET',
+                            quantity=qty_to_close,
+                            reduceOnly=True,
+                            positionSide='SHORT'
+                        )
+                        send_message("🔁 Закрито SHORT перед LONG")
+                        await asyncio.sleep(1)
+                    except Exception as e:
+                        send_message(f"⚠️ Не вдалося закрити SHORT перед LONG: {e} — пробуємо далі")
+                        await asyncio.sleep(1)
+                else:
+                    send_message("🤖 [DRY_RUN] Закрив SHORT перед LONG")
 
-    if has_open_position("LONG"):
-        send_message("⚠️ Уже відкрита LONG позиція")
-        return
-
-    try:
-        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-        qty = round(usd / entry, 3)
-        if not qty:
-            send_message("❌ Не вдалося розрахувати кількість для LONG")
+        # 🛡 Перевірка перед відкриттям
+        if has_open_position("SHORT"):
+            send_message("❗ SHORT ще відкритий — НЕ відкриваємо LONG!")
             return
 
-        tp = round(entry * CONFIG["TP_SL"]["LONG"]["TP"], 2)
-        sl = round(entry * CONFIG["TP_SL"]["LONG"]["SL"], 2)
+        if has_open_position("LONG"):
+            send_message("⚠️ Уже відкрита LONG позиція")
+            return
 
-        cancel_existing_stop_order("LONG")
+        try:
+            entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+            qty = round(usd / entry, 3)
+            if not qty:
+                send_message("❌ Не вдалося розрахувати кількість для LONG")
+                return
 
-        if DRY_RUN:
-            send_message(f"🤖 [DRY_RUN] LONG\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
-        else:
-            binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
-            binance_client.futures_create_order(
-                symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
-                stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG'
-            )
-            binance_client.futures_create_order(
-                symbol=symbol, side='SELL', type='STOP_MARKET',
-                stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG'
-            )
-            send_message(f"🟢 LONG OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+            tp = round(entry * CONFIG["TP_SL"]["LONG"]["TP"], 2)
+            sl = round(entry * CONFIG["TP_SL"]["LONG"]["SL"], 2)
 
-    except Exception as e:
-        send_message(f"❌ Binance LONG error: {e}")
+            cancel_existing_stop_order("LONG")
+
+            if DRY_RUN:
+                send_message(f"🤖 [DRY_RUN] LONG\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+            else:
+                binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
+                binance_client.futures_create_order(
+                    symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
+                    stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG'
+                )
+                binance_client.futures_create_order(
+                    symbol=symbol, side='SELL', type='STOP_MARKET',
+                    stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG'
+                )
+                send_message(f"🟢 LONG OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+
+        except Exception as e:
+            send_message(f"❌ Binance LONG error: {e}")
+
 
 # 📉 Відкриття SHORT угоди
-def place_short(symbol, usd):
-    if has_open_position("LONG"):
-        qty_to_close = get_current_position_qty("LONG")
-        if qty_to_close > 0:
-            if not DRY_RUN:
-                try:
-                    cancel_existing_stop_order("LONG")
-                    binance_client.futures_create_order(
-                        symbol=symbol,
-                        side='SELL',
-                        type='MARKET',
-                        quantity=qty_to_close,
-                        reduceOnly=True,
-                        positionSide='LONG'
-                    )
-                    send_message("🔁 Закрито LONG перед SHORT")
-                except Exception as e:
-                    send_message(f"⚠️ Не вдалося закрити LONG перед SHORT: {e} — продовжуємо")
-            else:
-                send_message("🤖 [DRY_RUN] Закрив LONG перед SHORT")
+async def place_short(symbol, usd):
+    async with open_position_lock:
+        if has_open_position("LONG"):
+            qty_to_close = get_current_position_qty("LONG")
+            if qty_to_close > 0:
+                if not DRY_RUN:
+                    try:
+                        cancel_existing_stop_order("LONG")
+                        binance_client.futures_create_order(
+                            symbol=symbol,
+                            side='SELL',
+                            type='MARKET',
+                            quantity=qty_to_close,
+                            reduceOnly=True,
+                            positionSide='LONG'
+                        )
+                        send_message("🔁 Закрито LONG перед SHORT")
+                        await asyncio.sleep(1)
+                    except Exception as e:
+                        send_message(f"⚠️ Не вдалося закрити LONG перед SHORT: {e} — пробуємо далі")
+                        await asyncio.sleep(1)
+                else:
+                    send_message("🤖 [DRY_RUN] Закрив LONG перед SHORT")
 
-    if has_open_position("SHORT"):
-        send_message("⚠️ Уже відкрита SHORT позиція")
-        return
-
-    try:
-        entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-        qty = round(usd / entry, 3)
-        if not qty:
-            send_message("❌ Не вдалося розрахувати кількість для SHORT")
+        # 🛡 Перевірка перед відкриттям
+        if has_open_position("LONG"):
+            send_message("❗ LONG ще відкритий — НЕ відкриваємо SHORT!")
             return
 
-        tp = round(entry * CONFIG["TP_SL"]["SHORT"]["TP"], 2)
-        sl = round(entry * CONFIG["TP_SL"]["SHORT"]["SL"], 2)
+        if has_open_position("SHORT"):
+            send_message("⚠️ Уже відкрита SHORT позиція")
+            return
 
-        cancel_existing_stop_order("SHORT")
+        try:
+            entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+            qty = round(usd / entry, 3)
+            if not qty:
+                send_message("❌ Не вдалося розрахувати кількість для SHORT")
+                return
 
-        if DRY_RUN:
-            send_message(f"🤖 [DRY_RUN] SHORT\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
-        else:
-            binance_client.futures_create_order(symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
-            binance_client.futures_create_order(
-                symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
-                stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT'
-            )
-            binance_client.futures_create_order(
-                symbol=symbol, side='BUY', type='STOP_MARKET',
-                stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT'
-            )
-            send_message(f"🔴 SHORT OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+            tp = round(entry * CONFIG["TP_SL"]["SHORT"]["TP"], 2)
+            sl = round(entry * CONFIG["TP_SL"]["SHORT"]["SL"], 2)
 
-    except Exception as e:
-        send_message(f"❌ Binance SHORT error: {e}")
+            cancel_existing_stop_order("SHORT")
+
+            if DRY_RUN:
+                send_message(f"🤖 [DRY_RUN] SHORT\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+            else:
+                binance_client.futures_create_order(symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
+                binance_client.futures_create_order(
+                    symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
+                    stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT'
+                )
+                binance_client.futures_create_order(
+                    symbol=symbol, side='BUY', type='STOP_MARKET',
+                    stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT'
+                )
+                send_message(f"🔴 SHORT OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+
+        except Exception as e:
+            send_message(f"❌ Binance SHORT error: {e}")
+
+
+            
 # 📒 Підключення до Google Sheets
 def get_gspread_client():
     try:
@@ -914,6 +961,81 @@ def get_gspread_client():
     except Exception as e:
         send_message(f"❌ GSpread auth error: {e}")
         return None
+# 🧠 Професійна обробка сигналу: переворот тільки при SUPER_BOOSTED
+async def handle_signal(signal):
+    side_now = None
+    if has_open_position("LONG"):
+        side_now = "LONG"
+    elif has_open_position("SHORT"):
+        side_now = "SHORT"
+
+    signal_direction = None
+    if "LONG" in signal:
+        signal_direction = "LONG"
+    elif "SHORT" in signal:
+        signal_direction = "SHORT"
+
+    # Якщо немає позиції - відкриваємо будь-який сигнал
+    if side_now is None:
+        if "LONG" in signal:
+            await place_long("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            update_cooldown()
+        elif "SHORT" in signal:
+            await place_short("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            update_cooldown()
+        return
+
+    # Якщо є позиція і супер сильний протилежний сигнал - переворот
+    if side_now != signal_direction and "SUPER" in signal:
+        send_message(f"🔄 Супер сигнал! Переворот {side_now} → {signal_direction}")
+        await close_all_positions_and_orders()
+
+        await asyncio.sleep(0.5)  # маленька пауза для біржі
+
+        if "LONG" in signal:
+            await place_long("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            update_cooldown()
+        elif "SHORT" in signal:
+            await place_short("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+            update_cooldown()
+    else:
+        send_message(f"⚡ Слабкий або той самий напрямок сигнал ({signal}). Тримаємо існуючу позицію {side_now}.")
+
+# 🧹 Закриття всіх позицій і відкритих ордерів
+def close_all_positions_and_orders():
+    try:
+        qty_long = get_current_position_qty("LONG")
+        qty_short = get_current_position_qty("SHORT")
+
+        if qty_long > 0:
+            binance_client.futures_create_order(
+                symbol="BTCUSDT",
+                side='SELL',
+                type='MARKET',
+                quantity=qty_long,
+                reduceOnly=True,
+                positionSide='LONG'
+            )
+            send_message(f"🔻 Закрито LONG позицію: {qty_long}")
+
+        if qty_short > 0:
+            binance_client.futures_create_order(
+                symbol="BTCUSDT",
+                side='BUY',
+                type='MARKET',
+                quantity=qty_short,
+                reduceOnly=True,
+                positionSide='SHORT'
+            )
+            send_message(f"🔺 Закрито SHORT позицію: {qty_short}")
+
+        open_orders = binance_client.futures_get_open_orders(symbol="BTCUSDT")
+        for order in open_orders:
+            binance_client.futures_cancel_order(symbol="BTCUSDT", orderId=order["orderId"])
+        send_message("🧹 Видалено всі відкриті стопи і тейки.")
+
+    except Exception as e:
+        send_message(f"❌ Close positions/orders error: {e}")
 
 # 🧠 Моніторинг закриття позицій + запис результатів у Google Sheets
 closed_positions_handled = set()
@@ -969,13 +1091,17 @@ PnL: {pnl}
 
 Поясни коротко (1 реченням), чому результат був таким. Якщо була помилка — вкажи її.
 """
-        res = client.chat.completions.create(   
-            model="gpt-4-turbo",
+        res = client.chat.completions.create(
+            model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "Ти трейдинг-аналітик. Поясни коротко, чому угода завершилась так. Відповідай однією фразою без зайвих деталей."},
+                {"role": "system", "content": (
+                    "Ти трейдинг-аналітик. Поясни коротко, чому угода завершилась так. "
+                    "Відповідай однією фразою без зайвих деталей."
+                )},
                 {"role": "user", "content": prompt}
             ]
         )
+
         return res.choices[0].message.content.strip()
     except Exception as e:
         send_message(f"❌ GPT (explain_trade) error: {e}")
@@ -1033,14 +1159,14 @@ async def webhook(req: Request):
         oi = cached_oi
         volume = cached_volume
 
-        # 🔥 Гарантовано викликаємо новини без крашу
+        # 🔥 Безпечне отримання новин
         try:
             news = get_latest_news()
         except Exception as news_error:
             send_message(f"❌ News fallback error: {news_error}")
             news = "⚠️ Новини тимчасово недоступні."
 
-        if not oi or not volume:
+        if oi is None or volume is None:
             send_message("⚠️ Дані кешу ще не прогріті — пропущено webhook.")
             return {"error": "Cache not ready"}
 
@@ -1053,12 +1179,10 @@ async def webhook(req: Request):
         decision = await ask_gpt_trade_with_all_context(signal, news, oi, delta, volume)
         send_message(f"🤖 GPT вирішив: {decision}")
 
-        if decision in ["LONG", "BOOSTED_LONG"]:
-            await asyncio.to_thread(place_long, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
-        elif decision in ["SHORT", "BOOSTED_SHORT"]:
-            await asyncio.to_thread(place_short, "BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+        await handle_signal(decision)
 
         return {"ok": True}
+
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
