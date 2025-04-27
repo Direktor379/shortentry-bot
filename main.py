@@ -748,14 +748,14 @@ async def monitor_cluster_trades():
 
 
 # 🧰 Скасування існуючого стоп-ордеру для сторони
-def cancel_existing_stop_order(side):
+def cancel_existing_orders(side):
     try:
-        orders = binance_client.futures_get_open_orders(symbol="BTCUSDT")
+        orders = binance_client.futures_get_open_orders(symbol=CONFIG["SYMBOL"])
         for o in orders:
-            if o["type"] == "STOP_MARKET" and o["positionSide"] == side:
-                binance_client.futures_cancel_order(symbol="BTCUSDT", orderId=o["orderId"])
+            if o["positionSide"] == side and o["type"] in ["STOP_MARKET", "TAKE_PROFIT_MARKET"]:
+                binance_client.futures_cancel_order(symbol=CONFIG["SYMBOL"], orderId=o["orderId"])
     except Exception as e:
-        send_message(f"❌ Cancel stop error ({side}): {e}")
+        send_message(f"❌ Cancel order error ({side}): {e}")
 
 # 🧠 Основний моніторинг трейлінг-стопів і часткових закриттів
 async def monitor_trailing_stops():
