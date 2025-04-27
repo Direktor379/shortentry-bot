@@ -245,6 +245,10 @@ async def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
         recent_trades, win_streak = get_recent_trades_and_streak()
         stats_summary = get_stats_summary()
         mistakes = get_recent_mistakes()
+        # 🧱 Дані по стінах ордербука
+        buy_wall = round(current_buy_wall, 1) if current_buy_wall else "немає"
+        sell_wall = round(current_sell_wall, 1) if current_sell_wall else "немає"
+
 
         type_upper = type_.upper()
 
@@ -273,6 +277,10 @@ Open Interest: {oi_text}
 Зміна OI: {delta_text}
 Новини:
 {news}
+
+Стіни у стакані:
+Buy wall: {buy_wall}
+Sell wall: {sell_wall}
 
 Ціль: досягти 5 перемог поспіль. Прийми зважене рішення.
 ❗️ Обери одне з:
@@ -1051,6 +1059,48 @@ def close_all_positions_and_orders():
 
     except Exception as e:
         send_message(f"❌ Close positions/orders error: {e}")
+# 📡 Моніторинг змін у стакані ордерів Binance
+async def monitor_orderbook(symbol: str = "BTCUSDT"):
+    """
+    Підключення до WebSocket потоку depth20@100ms для моніторингу заявок на покупку та продаж.
+    Зберігає інформацію про великі buy/sell стіни для подальшого використання в GPT аналізі.
+    """
+    global current_buy_wall, current_sell_wall
+    current_buy_wall = None  # тип: Optional[float]
+    current_sell_wall = None  # тип: Optional[float]
+
+    uri = f"wss://fstream.binance.com/ws/{symbol.lower()}@depth20@100ms"
+
+    while True:
+        try:
+            async with websockets.connect(uri, ping_interval=None) as websocket:
+                send_message(f"✅ Підключено до Orderbook WebSocket: {symbol}")
+
+                while True:
+                    try:
+                        msg = await websocket.recv()
+                        data = json.loads(msg)
+
+                        bids = data.get("b", [])  # список [price, quantity]
+                        asks = data.get("a", [])
+
+                        # Знаходимо найбільшу заявку на купівлю
+                        max_bid_qty = max([float(qty) for price, qty in bids if float(qty) > 0], default=0)
+                        # Знаходимо найбільшу заявку на продаж
+                        max_ask_qty = max([float(qty) for price, qty in asks if float(qty) > 0], default=0)
+
+                        # Оновлюємо глобальні змінні
+                        current_buy_wall = max_bid_qty
+                        current_sell_wall = max_ask_qty
+
+                    except Exception as inner_error:
+                        send_message(f"⚠️ Orderbook inside error: {inner_error}")
+                        await asyncio.sleep(1)
+                        break  # Перезапуск підключення
+
+        except Exception as outer_error:
+            send_message(f"❌ Orderbook connection error: {outer_error}")
+            await asyncio.sleep(5)  # Перезапуск через 5 секунд
 
 # 🧠 Моніторинг закриття позицій + запис результатів у Google Sheets
 closed_positions_handled = set()
@@ -1153,6 +1203,8 @@ async def start_all_monitors():
         asyncio.create_task(monitor_cluster_trades())      # 🧠 Кластерний моніторинг та GPT-аналіз
         asyncio.create_task(monitor_trailing_stops())      # 🛡️ Трейлінг-стопи
         asyncio.create_task(monitor_closures())            # 📈 Моніторинг закриття угод і логування
+        asyncio.create_task(monitor_orderbook(CONFIG["SYMBOL"]))
+
 
         send_message("✅ Бот ScalpGPT успішно стартував і монітори запущено.")
     except Exception as e:
