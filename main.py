@@ -27,6 +27,7 @@ async def healthcheck():
 CONFIG = {
     "COOLDOWN_SECONDS": 90,
     "TRADE_AMOUNT_USD": float(os.getenv("TRADE_USD_AMOUNT", 1000)),
+    "SYMBOL": os.getenv("TRADE_SYMBOL", "BTCUSDT"),
 
     # Кластери
     "CLUSTER_BUCKET_SIZE": 10,
