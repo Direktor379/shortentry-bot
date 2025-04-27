@@ -588,13 +588,21 @@ def has_open_position(side):
 # 📡 Основний моніторинг кластерних сигналів
 async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing, last_ws_error_time, last_skip_message_time
+
     uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
+
+    reconnect_delay = 5  # Початковий час затримки
+    error_counter = 0    # Лічильник помилок
     last_ws_error_time = 0
     last_skip_message_time = 0
 
     while True:
         try:
-            async with websockets.connect(uri) as websocket:
+            async with websockets.connect(uri, ping_interval=None) as websocket:
+                send_message("✅ Підключено до WebSocket")
+                reconnect_delay = 5
+                error_counter = 0
+
                 last_impulse = {"side": None, "volume": 0, "timestamp": 0}
                 trade_buffer = []
                 buffer_duration = 5  # секунд
@@ -604,6 +612,7 @@ async def monitor_cluster_trades():
                         msg_raw = await websocket.recv()
                         msg = json.loads(msg_raw)
                         await asyncio.sleep(0.01)
+
 
                         price = float(msg['p'])
                         qty = float(msg['q'])
@@ -642,15 +651,17 @@ async def monitor_cluster_trades():
 
                             if gpt_candle_result["decision"] == "SKIP":
                                 reason = gpt_candle_result.get("reason", "немає пояснення")
-                                if now - last_skip_message_time > 60:
+                                # Антиспам: надсилати повідомлення лише раз на 5 хвилин
+                                if now - last_skip_message_time > 300:  # 300 секунд = 5 хвилин
                                     send_message(f"🚫 SKIP — {reason}")
                                     last_skip_message_time = now
-
+                            
                                 cluster_data.clear()
                                 cluster_last_reset = now
                                 cluster_is_processing = False
                                 await asyncio.sleep(1)
                                 continue
+
 
                             buy_volume = sum(t["qty"] for t in trade_buffer if not t["is_sell"])
                             sell_volume = sum(t["qty"] for t in trade_buffer if t["is_sell"])
@@ -719,15 +730,20 @@ async def monitor_cluster_trades():
                             cluster_last_reset = now
                             cluster_is_processing = False
 
-                    except Exception as e:
-                        if "1011" in str(e) or "timeout" in str(e):
-                            now = time.time()
-                            if now - last_ws_error_time > 60:
-                                send_message("⚠️ WS 1011 / timeout — перепідключення...")
-                                last_ws_error_time = now
-                        else:
-                            send_message(f"⚠️ Cluster WS error: {e}")
-                        await asyncio.sleep(10)
+                            except Exception as e:
+                                error_counter += 1
+                                reconnect_delay = min(60, reconnect_delay * 2)
+                    
+                                if error_counter > 5:
+                                    send_message(f"❌ Занадто багато помилок WebSocket підряд ({error_counter}). Бот призупинено на 5 хвилин.")
+                                    await asyncio.sleep(300)  # 5 хвилин пауза
+                                    error_counter = 0
+                                    reconnect_delay = 5
+                    
+                                else:
+                                    send_message(f"⚠️ WS помилка: {e}. Перепідключення через {reconnect_delay} сек...")
+                                    await asyncio.sleep(reconnect_delay)
+
 
         except Exception as e:
             send_message(f"❌ Зовнішня помилка WebSocket: {e}")
