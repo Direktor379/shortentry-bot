@@ -589,113 +589,115 @@ def has_open_position(side):
 async def monitor_cluster_trades():
     global cluster_last_reset, cluster_is_processing, last_ws_error_time, last_skip_message_time
 
-    uri = "wss://fstream.binance.com/ws/btcusdt@aggTrade"
+    uri_list = [
+        "wss://fstream.binance.com/ws/btcusdt@aggTrade",
+        "wss://fstream1.binance.com/ws/btcusdt@aggTrade",
+        "wss://fstream2.binance.com/ws/btcusdt@aggTrade"
+    ]
+    current_uri_index = 0
 
-    reconnect_delay = 5  # Початковий час затримки
-    error_counter = 0    # Лічильник помилок
-    last_ws_error_time = 0
+    reconnect_delay = 5
+    error_counter = 0
     last_skip_message_time = 0
 
     while True:
         try:
+            uri = uri_list[current_uri_index]
             async with websockets.connect(uri, ping_interval=None) as websocket:
-                send_message("✅ Підключено до WebSocket")
+                send_message(f"✅ Підключено до WebSocket: {uri}")
                 reconnect_delay = 5
                 error_counter = 0
 
                 last_impulse = {"side": None, "volume": 0, "timestamp": 0}
                 trade_buffer = []
-                buffer_duration = 5  # секунд
+                buffer_duration = 5
 
                 while True:
-                    try:
-                        msg_raw = await websocket.recv()
-                        msg = json.loads(msg_raw)
-                        await asyncio.sleep(0.01)
+                    msg_raw = await websocket.recv()
+                    msg = json.loads(msg_raw)
+                    await asyncio.sleep(0.01)
 
+                    price = float(msg['p'])
+                    qty = float(msg['q'])
+                    is_sell = msg['m']
+                    timestamp = time.time()
 
-                        price = float(msg['p'])
-                        qty = float(msg['q'])
-                        is_sell = msg['m']
-                        timestamp = time.time()
+                    trade_buffer.append({
+                        "price": price,
+                        "qty": qty,
+                        "is_sell": is_sell,
+                        "timestamp": timestamp
+                    })
 
-                        trade_buffer.append({
-                            "price": price,
-                            "qty": qty,
-                            "is_sell": is_sell,
-                            "timestamp": timestamp
-                        })
+                    trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
 
-                        trade_buffer = [t for t in trade_buffer if timestamp - t["timestamp"] <= buffer_duration]
+                    bucket = round(price / CONFIG["CLUSTER_BUCKET_SIZE"]) * CONFIG["CLUSTER_BUCKET_SIZE"]
+                    if is_sell:
+                        cluster_data[bucket]['sell'] += qty
+                    else:
+                        cluster_data[bucket]['buy'] += qty
 
-                        bucket = round(price / CONFIG["CLUSTER_BUCKET_SIZE"]) * CONFIG["CLUSTER_BUCKET_SIZE"]
-                        if is_sell:
-                            cluster_data[bucket]['sell'] += qty
-                        else:
-                            cluster_data[bucket]['buy'] += qty
+                    now = time.time()
 
-                        now = time.time()
+                    if now - cluster_last_reset >= CONFIG["CLUSTER_INTERVAL"] and not cluster_is_processing:
+                        cluster_is_processing = True
 
-                        if now - cluster_last_reset >= CONFIG["CLUSTER_INTERVAL"] and not cluster_is_processing:
-                            cluster_is_processing = True
+                        strongest_bucket = max(cluster_data.items(), key=lambda x: x[1]["buy"] + x[1]["sell"])
+                        total_buy = strongest_bucket[1]["buy"]
+                        total_sell = strongest_bucket[1]["sell"]
 
-                            strongest_bucket = max(cluster_data.items(), key=lambda x: x[1]["buy"] + x[1]["sell"])
-                            total_buy = strongest_bucket[1]["buy"]
-                            total_sell = strongest_bucket[1]["sell"]
+                        gpt_candle_result = await analyze_candle_gpt(
+                            vwap=cached_vwap,
+                            cluster_buy=total_buy,
+                            cluster_sell=total_sell
+                        )
 
-                            gpt_candle_result = await analyze_candle_gpt(
-                                vwap=cached_vwap,
-                                cluster_buy=total_buy,
-                                cluster_sell=total_sell
-                            )
+                        if gpt_candle_result["decision"] == "SKIP":
+                            reason = gpt_candle_result.get("reason", "немає пояснення")
+                            if now - last_skip_message_time > 300:
+                                send_message(f"🚫 SKIP — {reason}")
+                                last_skip_message_time = now
 
-                            if gpt_candle_result["decision"] == "SKIP":
-                                reason = gpt_candle_result.get("reason", "немає пояснення")
-                                # Антиспам: надсилати повідомлення лише раз на 5 хвилин
-                                if now - last_skip_message_time > 300:  # 300 секунд = 5 хвилин
-                                    send_message(f"🚫 SKIP — {reason}")
-                                    last_skip_message_time = now
-                            
-                                cluster_data.clear()
-                                cluster_last_reset = now
-                                cluster_is_processing = False
-                                await asyncio.sleep(1)
-                                continue
+                            cluster_data.clear()
+                            cluster_last_reset = now
+                            cluster_is_processing = False
+                            await asyncio.sleep(1)
+                            continue
 
+                        buy_volume = sum(t["qty"] for t in trade_buffer if not t["is_sell"])
+                        sell_volume = sum(t["qty"] for t in trade_buffer if t["is_sell"])
+                        buy_ratio = (buy_volume / (buy_volume + sell_volume)) * 100 if (buy_volume + sell_volume) > 0 else 0
+                        sell_ratio = 100 - buy_ratio
 
-                            buy_volume = sum(t["qty"] for t in trade_buffer if not t["is_sell"])
-                            sell_volume = sum(t["qty"] for t in trade_buffer if t["is_sell"])
-                            buy_ratio = (buy_volume / (buy_volume + sell_volume)) * 100 if (buy_volume + sell_volume) > 0 else 0
-                            sell_ratio = 100 - buy_ratio
+                        signal = None
+                        if buy_ratio >= CONFIG["SUPER_BOOST_RATIO"] and total_buy >= CONFIG["SUPER_BOOST_VOLUME"]:
+                            signal = "SUPER_BOOSTED_LONG"
+                        elif sell_ratio >= CONFIG["SUPER_BOOST_RATIO"] and total_sell >= CONFIG["SUPER_BOOST_VOLUME"]:
+                            signal = "SUPER_BOOSTED_SHORT"
+                        elif total_buy >= CONFIG["BOOST_THRESHOLD"]:
+                            signal = "BOOSTED_LONG"
+                        elif total_sell >= CONFIG["BOOST_THRESHOLD"]:
+                            signal = "BOOSTED_SHORT"
 
-                            signal = None
-                            if buy_ratio >= CONFIG["SUPER_BOOST_RATIO"] and total_buy >= CONFIG["SUPER_BOOST_VOLUME"]:
-                                signal = "SUPER_BOOSTED_LONG"
-                            elif sell_ratio >= CONFIG["SUPER_BOOST_RATIO"] and total_sell >= CONFIG["SUPER_BOOST_VOLUME"]:
-                                signal = "SUPER_BOOSTED_SHORT"
-                            elif total_buy >= CONFIG["BOOST_THRESHOLD"]:
-                                signal = "BOOSTED_LONG"
-                            elif total_sell >= CONFIG["BOOST_THRESHOLD"]:
+                        if signal is None and (total_buy > CONFIG["MIN_CLUSTER_ALERT"] or total_sell > CONFIG["MIN_CLUSTER_ALERT"]):
+                            send_message(f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED")
+                            if total_sell > total_buy and total_sell >= CONFIG["ALT_BOOST_THRESHOLD"]:
                                 signal = "BOOSTED_SHORT"
+                            elif total_buy > total_sell and total_buy >= CONFIG["ALT_BOOST_THRESHOLD"]:
+                                signal = "BOOSTED_LONG"
 
-                            if signal is None and (total_buy > CONFIG["MIN_CLUSTER_ALERT"] or total_sell > CONFIG["MIN_CLUSTER_ALERT"]):
-                                send_message(f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED")
-                                if total_sell > total_buy and total_sell >= CONFIG["ALT_BOOST_THRESHOLD"]:
-                                    signal = "BOOSTED_SHORT"
-                                elif total_buy > total_sell and total_buy >= CONFIG["ALT_BOOST_THRESHOLD"]:
-                                    signal = "BOOSTED_LONG"
+                        if signal:
+                            if last_impulse["side"] == "BUY" and signal.startswith("SHORT") and \
+                               last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
+                                send_message("⏳ Відхилено SHORT — щойно був великий BUY")
+                                signal = None
+
+                            if last_impulse["side"] == "SELL" and signal.startswith("LONG") and \
+                               last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
+                                send_message("⏳ Відхилено LONG — щойно був великий SELL")
+                                signal = None
 
                             if signal:
-                                if last_impulse["side"] == "BUY" and signal.startswith("SHORT") and \
-                                   last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
-                                    send_message("⏳ Відхилено SHORT — щойно був великий BUY")
-                                    signal = None
-
-                                if last_impulse["side"] == "SELL" and signal.startswith("LONG") and \
-                                   last_impulse["volume"] >= CONFIG["IMPULSE_VOLUME_MIN"] and now - last_impulse["timestamp"] < CONFIG["RECENT_IMPULSE_TIMEOUT"]:
-                                    send_message("⏳ Відхилено LONG — щойно був великий SELL")
-                                    signal = None
-
                                 if signal in ["BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
                                     last_impulse = {"side": "BUY", "volume": total_buy, "timestamp": now}
                                 elif signal in ["BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
@@ -725,29 +727,24 @@ async def monitor_cluster_trades():
                                         await place_short("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
                                         update_cooldown()
 
-
-                            cluster_data.clear()
-                            cluster_last_reset = now
-                            cluster_is_processing = False
-
-                            except Exception as e:
-                                error_counter += 1
-                                reconnect_delay = min(60, reconnect_delay * 2)
-                    
-                                if error_counter > 5:
-                                    send_message(f"❌ Занадто багато помилок WebSocket підряд ({error_counter}). Бот призупинено на 5 хвилин.")
-                                    await asyncio.sleep(300)  # 5 хвилин пауза
-                                    error_counter = 0
-                                    reconnect_delay = 5
-                    
-                                else:
-                                    send_message(f"⚠️ WS помилка: {e}. Перепідключення через {reconnect_delay} сек...")
-                                    await asyncio.sleep(reconnect_delay)
-
+                        cluster_data.clear()
+                        cluster_last_reset = now
+                        cluster_is_processing = False
 
         except Exception as e:
-            send_message(f"❌ Зовнішня помилка WebSocket: {e}")
-            await asyncio.sleep(15)
+            error_counter += 1
+            reconnect_delay = min(60, reconnect_delay * 2)
+            current_uri_index = (current_uri_index + 1) % len(uri_list)
+
+            if error_counter > 5:
+                send_message(f"❌ Занадто багато помилок WebSocket підряд ({error_counter}). Бот призупинено на 5 хвилин.")
+                await asyncio.sleep(300)
+                error_counter = 0
+                reconnect_delay = 5
+            else:
+                send_message(f"⚠️ WebSocket помилка: {e}. Перемикаємо сервер. Перепідключення через {reconnect_delay} сек...")
+                await asyncio.sleep(reconnect_delay)
+
 
 
 # 🧰 Скасування існуючого стоп-ордеру для сторони
