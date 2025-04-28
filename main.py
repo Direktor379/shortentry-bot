@@ -860,133 +860,146 @@ async def monitor_trailing_stops():
 
         await asyncio.sleep(10)
 
-# 📈 Відкриття LONG угоди
-async def place_long(symbol, usd):
+# 📈 Відкриття LONG угоди (з перевіркою і безпечною взаємодією)
+async def place_long(symbol: str, usd: float):
+    """
+    Відкриття LONG-позиції. Попередньо закриває SHORT-позицію безпечним методом safe_close_position().
+    """
     async with open_position_lock:
+        # Спочатку закриваємо SHORT, якщо відкритий
         if has_open_position("SHORT"):
-            qty_to_close = get_current_position_qty("SHORT")
-            if qty_to_close > 0:
-                if not DRY_RUN:
-                    try:
-                        cancel_existing_orders("SHORT")
-                        binance_client.futures_create_order(
-                            symbol=symbol,
-                            side='BUY',
-                            type='MARKET',
-                            quantity=qty_to_close,
-                            reduceOnly=True,
-                            positionSide='SHORT'
-                        )
-                        send_message("🔁 Закрито SHORT перед LONG")
-                        await asyncio.sleep(1)
-                    except Exception as e:
-                        send_message(f"⚠️ Не вдалося закрити SHORT перед LONG: {e} — пробуємо далі")
-                        await asyncio.sleep(1)
-                else:
-                    send_message("🤖 [DRY_RUN] Закрив SHORT перед LONG")
+            await safe_close_position("SHORT")
 
-        # 🛡 Перевірка перед відкриттям
+        # Перевірка: якщо SHORT ще відкритий — не відкривати LONG
         if has_open_position("SHORT"):
             send_message("❗ SHORT ще відкритий — НЕ відкриваємо LONG!")
             return
 
+        # Перевірка: якщо вже відкритий LONG — не відкривати ще один
         if has_open_position("LONG"):
             send_message("⚠️ Уже відкрита LONG позиція")
             return
 
         try:
-            entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-            qty = round(usd / entry, 3)
+            # Отримуємо поточну ціну для розрахунку кількості
+            entry: float = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+            qty: float = round(usd / entry, 3)
             if not qty:
                 send_message("❌ Не вдалося розрахувати кількість для LONG")
                 return
 
-            tp = round(entry * CONFIG["TP_SL"]["LONG"]["TP"], 2)
-            sl = round(entry * CONFIG["TP_SL"]["LONG"]["SL"], 2)
+            tp: float = round(entry * CONFIG["TP_SL"]["LONG"]["TP"], 2)
+            sl: float = round(entry * CONFIG["TP_SL"]["LONG"]["SL"], 2)
 
+            # Перед відкриттям нової позиції очищаємо старі ордери
             cancel_existing_orders("LONG")
 
             if DRY_RUN:
-                send_message(f"🤖 [DRY_RUN] LONG\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+                send_message(f"🤖 [DRY_RUN] LONG\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡️ SL: {sl}")
             else:
-                binance_client.futures_create_order(symbol=symbol, side='BUY', type='MARKET', quantity=qty, positionSide='LONG')
+                # Відкриття LONG через MARKET
                 binance_client.futures_create_order(
-                    symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET',
-                    stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='LONG'
+                    symbol=symbol,
+                    side='BUY',
+                    type='MARKET',
+                    quantity=qty,
+                    positionSide='LONG'
                 )
+                # Створення тейк-профіту
                 binance_client.futures_create_order(
-                    symbol=symbol, side='SELL', type='STOP_MARKET',
-                    stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='LONG'
+                    symbol=symbol,
+                    side='SELL',
+                    type='TAKE_PROFIT_MARKET',
+                    stopPrice=tp,
+                    closePosition=True,
+                    timeInForce="GTC",
+                    positionSide='LONG'
                 )
-                send_message(f"🟢 LONG OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+                # Створення стоп-лоссу
+                binance_client.futures_create_order(
+                    symbol=symbol,
+                    side='SELL',
+                    type='STOP_MARKET',
+                    stopPrice=sl,
+                    closePosition=True,
+                    timeInForce="GTC",
+                    positionSide='LONG'
+                )
+                send_message(f"🟢 LONG OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡️ SL: {sl}")
 
         except Exception as e:
-            send_message(f"❌ Binance LONG error: {e}")
+            send_message(f"❌ Binance LONG open error: {e}")
 
 
-# 📉 Відкриття SHORT угоди
-async def place_short(symbol, usd):
+# 📉 Відкриття SHORT угоди (з перевіркою і безпечною взаємодією)
+async def place_short(symbol: str, usd: float):
+    """
+    Відкриття SHORT-позиції. Попередньо закриває LONG-позицію безпечним методом safe_close_position().
+    """
     async with open_position_lock:
+        # Спочатку закриваємо LONG, якщо відкритий
         if has_open_position("LONG"):
-            qty_to_close = get_current_position_qty("LONG")
-            if qty_to_close > 0:
-                if not DRY_RUN:
-                    try:
-                        cancel_existing_orders("LONG")
-                        binance_client.futures_create_order(
-                            symbol=symbol,
-                            side='SELL',
-                            type='MARKET',
-                            quantity=qty_to_close,
-                            reduceOnly=True,
-                            positionSide='LONG'
-                        )
-                        send_message("🔁 Закрито LONG перед SHORT")
-                        await asyncio.sleep(1)
-                    except Exception as e:
-                        send_message(f"⚠️ Не вдалося закрити LONG перед SHORT: {e} — пробуємо далі")
-                        await asyncio.sleep(1)
-                else:
-                    send_message("🤖 [DRY_RUN] Закрив LONG перед SHORT")
+            await safe_close_position("LONG")
 
-        # 🛡 Перевірка перед відкриттям
+        # Перевірка: якщо LONG ще відкритий — не відкривати SHORT
         if has_open_position("LONG"):
             send_message("❗ LONG ще відкритий — НЕ відкриваємо SHORT!")
             return
 
+        # Перевірка: якщо вже відкритий SHORT — не відкривати ще один
         if has_open_position("SHORT"):
             send_message("⚠️ Уже відкрита SHORT позиція")
             return
 
         try:
-            entry = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
-            qty = round(usd / entry, 3)
+            # Отримуємо поточну ціну для розрахунку кількості
+            entry: float = float(binance_client.futures_mark_price(symbol=symbol)["markPrice"])
+            qty: float = round(usd / entry, 3)
             if not qty:
                 send_message("❌ Не вдалося розрахувати кількість для SHORT")
                 return
 
-            tp = round(entry * CONFIG["TP_SL"]["SHORT"]["TP"], 2)
-            sl = round(entry * CONFIG["TP_SL"]["SHORT"]["SL"], 2)
+            tp: float = round(entry * CONFIG["TP_SL"]["SHORT"]["TP"], 2)
+            sl: float = round(entry * CONFIG["TP_SL"]["SHORT"]["SL"], 2)
 
+            # Перед відкриттям нової позиції очищаємо старі ордери
             cancel_existing_orders("SHORT")
 
-
             if DRY_RUN:
-                send_message(f"🤖 [DRY_RUN] SHORT\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+                send_message(f"🤖 [DRY_RUN] SHORT\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡️ SL: {sl}")
             else:
-                binance_client.futures_create_order(symbol=symbol, side='SELL', type='MARKET', quantity=qty, positionSide='SHORT')
+                # Відкриття SHORT через MARKET
                 binance_client.futures_create_order(
-                    symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET',
-                    stopPrice=tp, closePosition=True, timeInForce="GTC", positionSide='SHORT'
+                    symbol=symbol,
+                    side='SELL',
+                    type='MARKET',
+                    quantity=qty,
+                    positionSide='SHORT'
                 )
+                # Створення тейк-профіту
                 binance_client.futures_create_order(
-                    symbol=symbol, side='BUY', type='STOP_MARKET',
-                    stopPrice=sl, closePosition=True, timeInForce="GTC", positionSide='SHORT'
+                    symbol=symbol,
+                    side='BUY',
+                    type='TAKE_PROFIT_MARKET',
+                    stopPrice=tp,
+                    closePosition=True,
+                    timeInForce="GTC",
+                    positionSide='SHORT'
                 )
-                send_message(f"🔴 SHORT OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡 SL: {sl}")
+                # Створення стоп-лоссу
+                binance_client.futures_create_order(
+                    symbol=symbol,
+                    side='BUY',
+                    type='STOP_MARKET',
+                    stopPrice=sl,
+                    closePosition=True,
+                    timeInForce="GTC",
+                    positionSide='SHORT'
+                )
+                send_message(f"🔴 SHORT OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡️ SL: {sl}")
 
         except Exception as e:
-            send_message(f"❌ Binance SHORT error: {e}")
+            send_message(f"❌ Binance SHORT open error: {e}")
 
 
             
