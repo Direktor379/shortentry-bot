@@ -1031,6 +1031,48 @@ def get_gspread_client():
     except Exception as e:
         send_message(f"❌ GSpread auth error: {e}")
         return None
+       # 🛡️ Безпечне закриття відкритої позиції через MARKET
+async def safe_close_position(side: str):
+    """
+    Закриття відкритої позиції через MARKET.
+    Якщо помилка через reduceOnly — повторна спроба без reduceOnly.
+    """
+    try:
+        qty_to_close: float = get_current_position_qty(side)
+        if qty_to_close > 0:
+            try:
+                # Спочатку пробуємо через reduceOnly
+                binance_client.futures_create_order(
+                    symbol=CONFIG["SYMBOL"],
+                    side='SELL' if side == "LONG" else 'BUY',
+                    type='MARKET',
+                    quantity=qty_to_close,
+                    reduceOnly=True,
+                    positionSide=side
+                )
+                send_message(f"🔻 Закрито {side} через reduceOnly: {qty_to_close}")
+                await asyncio.sleep(1)
+            except Exception as e:
+                error_text = str(e)
+                send_message(f"⚠️ Не вдалося закрити {side} через reduceOnly: {error_text}")
+
+                if "reduceonly" in error_text.lower():
+                    send_message(f"⛔ Пробую закрити {side} через чистий MARKET без reduceOnly...")
+                    try:
+                        binance_client.futures_create_order(
+                            symbol=CONFIG["SYMBOL"],
+                            side='SELL' if side == "LONG" else 'BUY',
+                            type='MARKET',
+                            quantity=qty_to_close,
+                            positionSide=side
+                        )
+                        send_message(f"✅ Успішно закрито {side} через чистий MARKET!")
+                        await asyncio.sleep(1)
+                    except Exception as e_inner:
+                        send_message(f"❌ Повторна помилка закриття {side}: {e_inner}")
+    except Exception as e:
+        send_message(f"❌ Safe close error ({side}): {e}")
+ 
 # 🧠 Професійна обробка сигналу: переворот тільки при SUPER_BOOSTED, закриття лише якщо потрібно
 async def handle_signal(signal: str):
     """
