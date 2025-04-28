@@ -252,9 +252,18 @@ async def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
 
         type_upper = type_.upper()
 
+        # 📊 Показники дельти обʼєму
+        buy_ratio = round(current_buy_ratio, 2) if current_buy_ratio is not None else 50.0
+        sell_ratio = round(current_sell_ratio, 2) if current_sell_ratio is not None else 50.0
+
         # Фільтрація флетових зон без BOOSTED сигналів
         if is_flat_zone("BTCUSDT") and "BOOSTED" not in type_upper and (volume is None or volume < 100):
             return "SKIP"
+            # 📋 Автоматичне SKIP при слабкому перекосі дельти
+            if 50 <= buy_ratio <= 59 or 50 <= sell_ratio <= 59:
+                send_message(f"⚪ Слабкий перекіс дельти: Buy {buy_ratio}% / Sell {sell_ratio}% — пропускаємо сигнал.")
+                return "SKIP"
+
 
         oi_text = f"{oi:,.0f}" if oi is not None else "невідомо"
         delta_text = f"{delta:.2f}%" if delta is not None else "невідомо"
@@ -281,6 +290,11 @@ Open Interest: {oi_text}
 Стіни у стакані:
 Buy wall: {buy_wall}
 Sell wall: {sell_wall}
+
+Дельта обʼєму:
+Buy Ratio: {buy_ratio}%
+Sell Ratio: {sell_ratio}%
+
 
 Ціль: досягти 5 перемог поспіль. Прийми зважене рішення.
 ❗️ Обери одне з:
@@ -1269,11 +1283,86 @@ async def start_all_monitors():
         asyncio.create_task(monitor_trailing_stops())      # 🛡️ Трейлінг-стопи
         asyncio.create_task(monitor_closures())            # 📈 Моніторинг закриття угод і логування
         asyncio.create_task(monitor_orderbook(CONFIG["SYMBOL"]))
+        asyncio.create_task(monitor_delta_volume(CONFIG["SYMBOL"]))
+
 
 
         send_message("✅ Бот ScalpGPT успішно стартував і монітори запущено.")
     except Exception as e:
         send_message(f"❌ Помилка при старті бота: {e}")
+        
+# 📊 Моніторинг дельти обʼєму та підрахунок Buy/Sell Ratio у реальному часі
+async def monitor_delta_volume(symbol: str = "BTCUSDT"):
+    """
+    Підключення до WebSocket потоку aggTrade для підрахунку Buy Volume, Sell Volume, Delta і Buy/Sell Ratio.
+    Оновлення кожні 3 секунди.
+    """
+    global current_buy_volume, current_sell_volume, current_buy_ratio, current_sell_ratio
+
+    # Ініціалізація змінних
+    current_buy_volume: float = 0.0
+    current_sell_volume: float = 0.0
+    current_buy_ratio: float = 50.0  # стартові значення в центрі
+    current_sell_ratio: float = 50.0
+
+    uri: str = f"wss://fstream.binance.com/ws/{symbol.lower()}@aggTrade"
+
+    while True:
+        try:
+            async with websockets.connect(uri, ping_interval=None) as websocket:
+                send_message(f"✅ Підключено до Delta Volume WebSocket: {symbol}")
+
+                buy_volume_batch: float = 0.0
+                sell_volume_batch: float = 0.0
+                last_update_time: float = time.time()
+
+                while True:
+                    try:
+                        msg_raw = await websocket.recv()
+                        msg = json.loads(msg_raw)
+
+                        price: float = float(msg['p'])
+                        qty: float = float(msg['q'])
+                        is_sell: bool = msg['m']
+
+                        if is_sell:
+                            sell_volume_batch += price * qty
+                        else:
+                            buy_volume_batch += price * qty
+
+                        now: float = time.time()
+
+                        # Оновлюємо дані кожні 3 секунди
+                        if now - last_update_time >= 3:
+                            total_volume: float = buy_volume_batch + sell_volume_batch
+
+                            if total_volume > 0:
+                                current_buy_ratio = round((buy_volume_batch / total_volume) * 100, 2)
+                                current_sell_ratio = 100.0 - current_buy_ratio
+                            else:
+                                current_buy_ratio = 50.0
+                                current_sell_ratio = 50.0
+
+                            # Зберігаємо фактичні об'єми
+                            current_buy_volume = buy_volume_batch
+                            current_sell_volume = sell_volume_batch
+
+                            # Лог в консоль для дебагу
+                            print(f"📈 Delta Update: Buy {current_buy_ratio}% | Sell {current_sell_ratio}% | BuyVolume ${round(buy_volume_batch)} | SellVolume ${round(sell_volume_batch)}")
+
+                            # Скидаємо батч для наступної порції
+                            buy_volume_batch = 0.0
+                            sell_volume_batch = 0.0
+                            last_update_time = now
+
+                    except Exception as inner_error:
+                        send_message(f"⚠️ Delta volume internal error: {inner_error}")
+                        await asyncio.sleep(1)
+                        break  # Перезапуск WebSocket
+
+        except Exception as outer_error:
+            send_message(f"❌ Delta volume connection error: {outer_error}")
+            await asyncio.sleep(5)  # Перезапуск WebSocket
 
 # 📬 Webhook приймає сигнали з TradingView або Postman
 @app.post("/webhook")
