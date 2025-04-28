@@ -1299,11 +1299,12 @@ async def monitor_delta_volume(symbol: str = "BTCUSDT"):
     """
     global current_buy_volume, current_sell_volume, current_buy_ratio, current_sell_ratio
 
-    # Ініціалізація змінних
-    current_buy_volume: float = 0.0
-    current_sell_volume: float = 0.0
-    current_buy_ratio: float = 50.0  # стартові значення в центрі
-    current_sell_ratio: float = 50.0
+    # 🛠️ Ініціалізація змінних без типізації тут
+    current_buy_volume = 0.0
+    current_sell_volume = 0.0
+    current_buy_ratio = 50.0  # Стартові значення в центрі
+    current_sell_ratio = 50.0
+
 
     uri: str = f"wss://fstream.binance.com/ws/{symbol.lower()}@aggTrade"
 
