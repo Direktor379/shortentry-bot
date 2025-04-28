@@ -259,10 +259,11 @@ async def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
         # Фільтрація флетових зон без BOOSTED сигналів
         if is_flat_zone("BTCUSDT") and "BOOSTED" not in type_upper and (volume is None or volume < 100):
             return "SKIP"
-            # 📋 Автоматичне SKIP при слабкому перекосі дельти
-            if 50 <= buy_ratio <= 59 or 50 <= sell_ratio <= 59:
-                send_message(f"⚪ Слабкий перекіс дельти: Buy {buy_ratio}% / Sell {sell_ratio}% — пропускаємо сигнал.")
+            # 📋 Автоматичне SKIP при недостатньому перекосі дельти
+            if buy_ratio < 62 and sell_ratio < 62:
+                send_message(f"⚪ Дельта обʼєму слабка (Buy {buy_ratio}% / Sell {sell_ratio}%) — пропускаємо сигнал.")
                 return "SKIP"
+
 
 
         oi_text = f"{oi:,.0f}" if oi is not None else "невідомо"
@@ -726,6 +727,16 @@ async def monitor_cluster_trades():
                                 elif signal in ["BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
                                     last_impulse = {"side": "SELL", "volume": total_sell, "timestamp": now}
 
+                                # 🔥 Фільтрація кластерів по обʼєму
+                                if total_buy < 60 and total_sell < 60:
+                                    send_message("⚪ Кластер має малий обʼєм — пропущено.")
+                                    cluster_data.clear()
+                                    cluster_last_reset = time.time()
+                                    cluster_is_processing = False
+                                    await asyncio.sleep(1)
+                                    continue
+
+
                                 news = get_latest_news()
                                 oi = cached_oi
                                 volume = cached_volume
@@ -1147,7 +1158,7 @@ async def safe_close_position(side: str):
             return
 
         # Якщо є позиція і сигнал супер сильний + протилежний — переворот
-        if side_now != signal_direction and "SUPER_BOOSTED" in signal:
+        if side_now != signal_direction and signal.startswith("SUPER_BOOSTED"):
             send_message(f"🔄 Супер сигнал! Переворот {side_now} → {signal_direction}")
             await close_all_positions_and_orders()
             await asyncio.sleep(0.5)  # Невелика пауза для стабільності
