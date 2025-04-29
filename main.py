@@ -955,6 +955,62 @@ async def monitor_trailing_stops():
             send_message(f"⚠️ Trailing monitor error: {e}")
 
         await asyncio.sleep(10)
+        # 📡 Моніторинг змін у стакані ордерів Binance
+async def monitor_orderbook(symbol: str = "BTCUSDT"):
+    """
+    Підключення до WebSocket потоку depth20@100ms для моніторингу заявок на покупку та продаж.
+    Зберігає інформацію про великі buy/sell стіни для подальшого використання в GPT аналізі.
+    """
+    global current_buy_wall, current_sell_wall, last_bid_wall, last_ask_wall, fake_wall_detected
+    current_buy_wall = None  # тип: Optional[float]
+    current_sell_wall = None  # тип: Optional[float]
+
+    uri = f"wss://fstream.binance.com/ws/{symbol.lower()}@depth20@100ms"
+
+    while True:
+        try:
+            async with websockets.connect(uri, ping_interval=None) as websocket:
+                send_message(f"✅ Підключено до Orderbook WebSocket: {symbol}")
+
+                while True:
+                    try:
+                        msg = await websocket.recv()
+                        data = json.loads(msg)
+
+                        bids = data.get("b", [])  # список [price, quantity]
+                        asks = data.get("a", [])
+
+                        # Знаходимо найбільшу заявку на купівлю
+                        max_bid_qty = max([float(qty) for price, qty in bids if float(qty) > 0], default=0)
+                        # Знаходимо найбільшу заявку на продаж
+                        max_ask_qty = max([float(qty) for price, qty in asks if float(qty) > 0], default=0)
+
+                        # Оновлюємо глобальні змінні
+                        current_buy_wall = max_bid_qty
+                        current_sell_wall = max_ask_qty
+
+                        # 🔍 Перевірка на зникнення стін
+                        if last_bid_wall > 0 and current_buy_wall < last_bid_wall * 0.3:
+                            fake_wall_detected = True
+                            send_message("⚠️ Виявлена фейкова Buy стіна. Активовано SKIP.")
+
+                        if last_ask_wall > 0 and current_sell_wall < last_ask_wall * 0.3:
+                            fake_wall_detected = True
+                            send_message("⚠️ Виявлена фейкова Sell стіна. Активовано SKIP.")
+
+                        # 🔁 Оновлення для наступної перевірки
+                        last_bid_wall = current_buy_wall
+                        last_ask_wall = current_sell_wall
+
+                    except Exception as inner_error:
+                        send_message(f"⚠️ Orderbook inside error: {inner_error}")
+                        await asyncio.sleep(1)
+                        break  # Перезапуск WebSocket
+
+        except Exception as outer_error:
+            send_message(f"❌ Orderbook connection error: {outer_error}")
+            await asyncio.sleep(5)
+
 
 # 📈 Відкриття LONG угоди (з перевіркою і безпечною взаємодією)
 async def place_long(symbol: str, usd: float):
@@ -1301,64 +1357,6 @@ async def close_all_positions_and_orders():
     except Exception as e:
         send_message(f"❌ Close all positions error: {e}")
 
-    # 📡 Моніторинг змін у стакані ордерів Binance
-    async def monitor_orderbook(symbol: str = "BTCUSDT"):
-        """
-        Підключення до WebSocket потоку depth20@100ms для моніторингу заявок на покупку та продаж.
-        Зберігає інформацію про великі buy/sell стіни для подальшого використання в GPT аналізі.
-        """
-        global current_buy_wall, current_sell_wall
-        current_buy_wall = None  # тип: Optional[float]
-        current_sell_wall = None  # тип: Optional[float]
-       
-    # Оновлення стін для наступної перевірки
-    last_bid_wall = current_buy_wall
-    last_ask_wall = current_sell_wall
-
-    
-
-    uri = f"wss://fstream.binance.com/ws/{symbol.lower()}@depth20@100ms"
-
-    while True:
-        try:
-            async with websockets.connect(uri, ping_interval=None) as websocket:
-                send_message(f"✅ Підключено до Orderbook WebSocket: {symbol}")
-
-                while True:
-                    try:
-                        msg = await websocket.recv()
-                        data = json.loads(msg)
-
-                        bids = data.get("b", [])  # список [price, quantity]
-                        asks = data.get("a", [])
-
-                        # Знаходимо найбільшу заявку на купівлю
-                        max_bid_qty = max([float(qty) for price, qty in bids if float(qty) > 0], default=0)
-                        # Знаходимо найбільшу заявку на продаж
-                        max_ask_qty = max([float(qty) for price, qty in asks if float(qty) > 0], default=0)
-
-                        # Оновлюємо глобальні змінні
-                        current_buy_wall = max_bid_qty
-                        current_sell_wall = max_ask_qty
-                         # 🔍 Перевірка на зникнення стін
-                        if last_bid_wall > 0 and current_buy_wall < last_bid_wall * 0.3:
-                            fake_wall_detected = True
-                            send_message("⚠️ Виявлена фейкова Buy стіна. Активовано SKIP.")
-                        
-                        if last_ask_wall > 0 and current_sell_wall < last_ask_wall * 0.3:
-                            fake_wall_detected = True
-                            send_message("⚠️ Виявлена фейкова Sell стіна. Активовано SKIP.")
-    
-
-                    except Exception as inner_error:
-                        send_message(f"⚠️ Orderbook inside error: {inner_error}")
-                        await asyncio.sleep(1)
-                        break  # Перезапуск підключення
-
-        except Exception as outer_error:
-            send_message(f"❌ Orderbook connection error: {outer_error}")
-            await asyncio.sleep(5)  # Перезапуск через 5 секунд
-
 # 🧠 Моніторинг закриття позицій + запис результатів у Google Sheets
 closed_positions_handled = set()
 
@@ -1456,6 +1454,7 @@ def log_learning_entry(trade_type, result, reason, pnl=None):
         send_message(f"❌ Learning Log error: {e}")
 # 🚀 Запуск усіх моніторів при старті FastAPI
 @app.on_event("startup")
+
 async def start_all_monitors():
     try:
         check_env_variables()  # 🔐 Перевірка наявності важливих ENV
