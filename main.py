@@ -80,27 +80,41 @@ def check_env_variables():
 # 🔄 Скидання runtime-змінних (на випадок перезапуску)
 def init_runtime_state():
     global last_trade_time, cached_oi, cached_volume, cached_vwap, last_open_interest
-    global trailing_stops, cluster_data, cluster_last_reset, cluster_is_processing, last_ws_restart_time
-    global open_position_lock
-    # 📦 Глобальні змінні для відстеження стін
-    last_bid_wall: float = 0.0  # остання обʼємна заявка на купівлю
-    last_ask_wall: float = 0.0  # остання обʼємна заявка на продаж
-    fake_wall_counter: int = 0  # лічильник зникнень стін
-    last_fake_wall_time: float = 0.0  # таймстемп останнього зникнення
-    fake_wall_detected: bool = False  # прапор фейкової стіни
+    global trailing_stops, cluster_data, cluster_last_reset, cluster_is_processing
+    global last_ws_restart_time, open_position_lock
 
+    # 🔍 Глобальні змінні для orderbook-фільтра
+    global last_bid_wall, last_ask_wall, fake_wall_counter, last_fake_wall_time, fake_wall_detected
+    global current_buy_wall, current_sell_wall
 
+    # 🔐 Лок на відкриття позицій
     open_position_lock = asyncio.Lock()
+
+    # 📈 Runtime кеші
     last_trade_time = 0
     cached_oi = None
     cached_volume = None
     cached_vwap = None
     last_open_interest = None
+
+    # 📊 Стани кластерного монітора
     trailing_stops = {"LONG": None, "SHORT": None}
     cluster_data = defaultdict(lambda: {"buy": 0, "sell": 0})
     cluster_last_reset = time.time()
     cluster_is_processing = False
+
+    # 🔁 Перезапуск WebSocket контролю
     last_ws_restart_time = 0
+
+    # 📡 Стан orderbook
+    last_bid_wall = 0.0
+    last_ask_wall = 0.0
+    fake_wall_counter = 0
+    last_fake_wall_time = 0.0
+    fake_wall_detected = False
+    current_buy_wall = 0.0
+    current_sell_wall = 0.0
+
 
 
 # 📬 Відправка повідомлення у Telegram
