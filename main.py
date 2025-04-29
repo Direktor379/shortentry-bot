@@ -95,6 +95,12 @@ def init_runtime_state():
     cluster_is_processing = False
     last_ws_restart_time = 0
 
+# 🔖 Глобальні змінні для відстеження стін
+last_bid_wall: float = 0.0
+last_ask_wall: float = 0.0
+fake_wall_detected: bool = False
+
+
 # 📬 Відправка повідомлення у Telegram
 def send_message(text: str):
     try:
@@ -765,6 +771,16 @@ async def monitor_cluster_trades():
                                     cluster_is_processing = False
                                     await asyncio.sleep(1)
                                     continue
+                                    # 🚫 Якщо виявлено фейкову стіну — SKIP
+                                    if fake_wall_detected:
+                                        send_message("🚫 Сигнал пропущено через фейкову стіну.")
+                                        cluster_data.clear()
+                                        cluster_last_reset = time.time()
+                                        cluster_is_processing = False
+                                        fake_wall_detected = False  # скидаємо прапор
+                                        await asyncio.sleep(1)
+                                        continue
+
 
 
                                 news = get_latest_news()
@@ -772,6 +788,31 @@ async def monitor_cluster_trades():
                                 volume = cached_volume
                                 candles = get_candle_summary("BTCUSDT")
                                 walls = get_orderbook_snapshot("BTCUSDT")
+                                # 📈 Перевірка, чи є реальний рух після кластера
+                                try:
+                                    entry_price: float = float(binance_client.futures_mark_price(symbol="BTCUSDT")["markPrice"])
+                                    await asyncio.sleep(5)  # даємо ринку 5 сек
+                                    exit_price: float = float(binance_client.futures_mark_price(symbol="BTCUSDT")["markPrice"])
+                                    price_change: float = (exit_price - entry_price) / entry_price * 100
+                                
+                                    if signal.startswith("LONG") and price_change < 0.05:
+                                        send_message("⚪ LONG кластер без продовження руху — SKIP.")
+                                        cluster_data.clear()
+                                        cluster_last_reset = time.time()
+                                        cluster_is_processing = False
+                                        await asyncio.sleep(1)
+                                        continue
+                                
+                                    if signal.startswith("SHORT") and price_change > -0.05:
+                                        send_message("⚪ SHORT кластер без продовження руху — SKIP.")
+                                        cluster_data.clear()
+                                        cluster_last_reset = time.time()
+                                        cluster_is_processing = False
+                                        await asyncio.sleep(1)
+                                        continue
+                                
+                                except Exception as e:
+                                    send_message(f"❌ Помилка при перевірці руху після кластера: {e}")
 
                                 decision = await ask_gpt_trade_with_all_context(
                                     signal,
@@ -1269,6 +1310,20 @@ async def monitor_orderbook(symbol: str = "BTCUSDT"):
     global current_buy_wall, current_sell_wall
     current_buy_wall = None  # тип: Optional[float]
     current_sell_wall = None  # тип: Optional[float]
+    # 🔍 Перевірка на зникнення стін
+if last_bid_wall > 0 and current_buy_wall < last_bid_wall * 0.3:
+    fake_wall_detected = True
+    send_message("⚠️ Виявлена фейкова Buy стіна. Активовано SKIP.")
+
+if last_ask_wall > 0 and current_sell_wall < last_ask_wall * 0.3:
+    fake_wall_detected = True
+    send_message("⚠️ Виявлена фейкова Sell стіна. Активовано SKIP.")
+
+# Оновлення стін для наступної перевірки
+last_bid_wall = current_buy_wall
+last_ask_wall = current_sell_wall
+
+    
 
     uri = f"wss://fstream.binance.com/ws/{symbol.lower()}@depth20@100ms"
 
