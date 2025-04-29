@@ -239,12 +239,38 @@ def get_recent_mistakes(limit=5):
     except Exception as e:
         send_message(f"❌ Mistakes fallback error: {e}")
         return "❕ GPT тимчасово без памʼяті."
+        # 📊 Отримання Winrate по кожному типу з вкладки Stats
+def get_global_stats() -> dict:
+    """
+    Зчитує Winrate по кожному типу з Google Sheets → вкладка 'Stats'
+    Повертає словник {"LONG": 68.0, "SHORT": 43.5, ...}
+    """
+    try:
+        sh = get_gspread_client().open_by_key(GOOGLE_SHEET_ID)
+        sheet = sh.worksheet("Stats")
+        rows = sheet.get_all_values()[1:]  # пропускаємо заголовок
+
+        result: dict = {}
+        for row in rows:
+            type_: str = row[0].strip().upper()
+            winrate: float = float(row[4]) if row[4] else 0.0
+            result[type_] = winrate
+        return result
+    except Exception as e:
+        send_message(f"❌ Не вдалося зчитати Stats: {e}")
+        return {}
+
 # 🧠 Запит до GPT на базі повного контексту
 async def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
     try:
         recent_trades, win_streak = get_recent_trades_and_streak()
         stats_summary = get_stats_summary()
         mistakes = get_recent_mistakes()
+        # 📊 Winrate по типах з таблиці Stats
+        global_stats = get_global_stats()
+        long_wr = global_stats.get("LONG", 0.0)
+        short_wr = global_stats.get("SHORT", 0.0)
+
         # 🧱 Дані по стінах ордербука
         buy_wall = round(current_buy_wall, 1) if current_buy_wall else "немає"
         sell_wall = round(current_sell_wall, 1) if current_sell_wall else "немає"
@@ -295,6 +321,10 @@ Sell wall: {sell_wall}
 Дельта обʼєму:
 Buy Ratio: {buy_ratio}%
 Sell Ratio: {sell_ratio}%
+
+Winrate по глобальній статистиці:
+LONG: {long_wr}%
+SHORT: {short_wr}%
 
 
 Ціль: досягти 5 перемог поспіль. Прийми зважене рішення.
