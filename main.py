@@ -951,6 +951,16 @@ async def place_long(symbol: str, usd: float):
                     positionSide='LONG'
                 )
                 send_message(f"🟢 LONG OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡️ SL: {sl}")
+                log_to_sheet(
+                    type_="LONG",
+                    entry=entry,
+                    tp=tp,
+                    sl=sl,
+                    qty=qty,
+                    result=None,
+                    comment="GPT сигнал"
+                )
+
 
         except Exception as e:
             send_message(f"❌ Binance LONG open error: {e}")
@@ -1022,6 +1032,16 @@ async def place_short(symbol: str, usd: float):
                     positionSide='SHORT'
                 )
                 send_message(f"🔴 SHORT OPEN\n📍 Entry: {entry}\n📦 Qty: {qty}\n🎯 TP: {tp}\n🛡️ SL: {sl}")
+                log_to_sheet(
+                    type_="SHORT",
+                    entry=entry,
+                    tp=tp,
+                    sl=sl,
+                    qty=qty,
+                    result=None,
+                    comment="GPT сигнал"
+                )
+
 
         except Exception as e:
             send_message(f"❌ Binance SHORT open error: {e}")
