@@ -1301,27 +1301,27 @@ async def close_all_positions_and_orders():
     except Exception as e:
         send_message(f"❌ Close all positions error: {e}")
 
-# 📡 Моніторинг змін у стакані ордерів Binance
-async def monitor_orderbook(symbol: str = "BTCUSDT"):
-    """
-    Підключення до WebSocket потоку depth20@100ms для моніторингу заявок на покупку та продаж.
-    Зберігає інформацію про великі buy/sell стіни для подальшого використання в GPT аналізі.
-    """
-    global current_buy_wall, current_sell_wall
-    current_buy_wall = None  # тип: Optional[float]
-    current_sell_wall = None  # тип: Optional[float]
-    # 🔍 Перевірка на зникнення стін
-if last_bid_wall > 0 and current_buy_wall < last_bid_wall * 0.3:
-    fake_wall_detected = True
-    send_message("⚠️ Виявлена фейкова Buy стіна. Активовано SKIP.")
-
-if last_ask_wall > 0 and current_sell_wall < last_ask_wall * 0.3:
-    fake_wall_detected = True
-    send_message("⚠️ Виявлена фейкова Sell стіна. Активовано SKIP.")
-
-# Оновлення стін для наступної перевірки
-last_bid_wall = current_buy_wall
-last_ask_wall = current_sell_wall
+    # 📡 Моніторинг змін у стакані ордерів Binance
+    async def monitor_orderbook(symbol: str = "BTCUSDT"):
+        """
+        Підключення до WebSocket потоку depth20@100ms для моніторингу заявок на покупку та продаж.
+        Зберігає інформацію про великі buy/sell стіни для подальшого використання в GPT аналізі.
+        """
+        global current_buy_wall, current_sell_wall
+        current_buy_wall = None  # тип: Optional[float]
+        current_sell_wall = None  # тип: Optional[float]
+        # 🔍 Перевірка на зникнення стін
+    if last_bid_wall > 0 and current_buy_wall < last_bid_wall * 0.3:
+        fake_wall_detected = True
+        send_message("⚠️ Виявлена фейкова Buy стіна. Активовано SKIP.")
+    
+    if last_ask_wall > 0 and current_sell_wall < last_ask_wall * 0.3:
+        fake_wall_detected = True
+        send_message("⚠️ Виявлена фейкова Sell стіна. Активовано SKIP.")
+    
+    # Оновлення стін для наступної перевірки
+    last_bid_wall = current_buy_wall
+    last_ask_wall = current_sell_wall
 
     
 
