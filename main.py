@@ -96,8 +96,8 @@ def init_runtime_state():
     last_ws_restart_time = 0
 
 # 🔖 Глобальні змінні для відстеження стін
-last_bid_wall: float = 0.0
-last_ask_wall: float = 0.0
+fake_wall_counter: int = 0  # лічильник зникнень стіни
+last_fake_wall_time: float = 0.0  # таймстемп останнього зникнення
 fake_wall_detected: bool = False
 
 
@@ -989,12 +989,16 @@ async def monitor_orderbook(symbol: str = "BTCUSDT"):
                         current_buy_wall = max_bid_qty
                         current_sell_wall = max_ask_qty
 
-                        # 🔍 Перевірка на зникнення стін
+                       # 🔍 Перевірка на повторне зникнення стіни
                         if last_bid_wall > 0 and current_buy_wall < last_bid_wall * 0.3:
-                            fake_wall_detected = True  # 📌 тихий прапор, без спаму
-                        
-                        if last_ask_wall > 0 and current_sell_wall < last_ask_wall * 0.3:
-                            fake_wall_detected = True  # 📌 тихий прапор, без спаму
+                            fake_wall_counter += 1
+                            if fake_wall_counter >= 3 and time.time() - last_fake_wall_time > 30:
+                                fake_wall_detected = True
+                                last_fake_wall_time = time.time()
+                                fake_wall_counter = 0  # скидаємо
+                        else:
+                            fake_wall_counter = 0  # якщо відновилась — скидуємо
+
 
 
                         # 🔁 Оновлення для наступної перевірки
