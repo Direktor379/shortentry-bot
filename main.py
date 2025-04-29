@@ -1310,15 +1310,7 @@ async def close_all_positions_and_orders():
         global current_buy_wall, current_sell_wall
         current_buy_wall = None  # тип: Optional[float]
         current_sell_wall = None  # тип: Optional[float]
-        # 🔍 Перевірка на зникнення стін
-    if last_bid_wall > 0 and current_buy_wall < last_bid_wall * 0.3:
-        fake_wall_detected = True
-        send_message("⚠️ Виявлена фейкова Buy стіна. Активовано SKIP.")
-    
-    if last_ask_wall > 0 and current_sell_wall < last_ask_wall * 0.3:
-        fake_wall_detected = True
-        send_message("⚠️ Виявлена фейкова Sell стіна. Активовано SKIP.")
-    
+       
     # Оновлення стін для наступної перевірки
     last_bid_wall = current_buy_wall
     last_ask_wall = current_sell_wall
@@ -1348,6 +1340,15 @@ async def close_all_positions_and_orders():
                         # Оновлюємо глобальні змінні
                         current_buy_wall = max_bid_qty
                         current_sell_wall = max_ask_qty
+                         # 🔍 Перевірка на зникнення стін
+                        if last_bid_wall > 0 and current_buy_wall < last_bid_wall * 0.3:
+                            fake_wall_detected = True
+                            send_message("⚠️ Виявлена фейкова Buy стіна. Активовано SKIP.")
+                        
+                        if last_ask_wall > 0 and current_sell_wall < last_ask_wall * 0.3:
+                            fake_wall_detected = True
+                            send_message("⚠️ Виявлена фейкова Sell стіна. Активовано SKIP.")
+    
 
                     except Exception as inner_error:
                         send_message(f"⚠️ Orderbook inside error: {inner_error}")
