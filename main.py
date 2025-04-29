@@ -961,7 +961,7 @@ async def monitor_orderbook(symbol: str = "BTCUSDT"):
     Підключення до WebSocket потоку depth20@100ms для моніторингу заявок на покупку та продаж.
     Зберігає інформацію про великі buy/sell стіни для подальшого використання в GPT аналізі.
     """
-    global current_buy_wall, current_sell_wall, last_bid_wall, last_ask_wall, fake_wall_detected
+    global current_buy_wall, current_sell_wall, last_bid_wall, last_ask_wall, fake_wall_detected, fake_wall_counter, last_fake_wall_time
     current_buy_wall = None  # тип: Optional[float]
     current_sell_wall = None  # тип: Optional[float]
 
