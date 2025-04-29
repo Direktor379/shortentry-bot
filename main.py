@@ -82,6 +82,13 @@ def init_runtime_state():
     global last_trade_time, cached_oi, cached_volume, cached_vwap, last_open_interest
     global trailing_stops, cluster_data, cluster_last_reset, cluster_is_processing, last_ws_restart_time
     global open_position_lock
+    # 📦 Глобальні змінні для відстеження стін
+    last_bid_wall: float = 0.0  # остання обʼємна заявка на купівлю
+    last_ask_wall: float = 0.0  # остання обʼємна заявка на продаж
+    fake_wall_counter: int = 0  # лічильник зникнень стін
+    last_fake_wall_time: float = 0.0  # таймстемп останнього зникнення
+    fake_wall_detected: bool = False  # прапор фейкової стіни
+
 
     open_position_lock = asyncio.Lock()
     last_trade_time = 0
@@ -94,11 +101,6 @@ def init_runtime_state():
     cluster_last_reset = time.time()
     cluster_is_processing = False
     last_ws_restart_time = 0
-
-# 🔖 Глобальні змінні для відстеження стін
-fake_wall_counter: int = 0  # лічильник зникнень стіни
-last_fake_wall_time: float = 0.0  # таймстемп останнього зникнення
-fake_wall_detected: bool = False
 
 
 # 📬 Відправка повідомлення у Telegram
