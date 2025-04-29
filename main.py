@@ -991,12 +991,11 @@ async def monitor_orderbook(symbol: str = "BTCUSDT"):
 
                         # 🔍 Перевірка на зникнення стін
                         if last_bid_wall > 0 and current_buy_wall < last_bid_wall * 0.3:
-                            fake_wall_detected = True
-                            send_message("⚠️ Виявлена фейкова Buy стіна. Активовано SKIP.")
-
+                            fake_wall_detected = True  # 📌 тихий прапор, без спаму
+                        
                         if last_ask_wall > 0 and current_sell_wall < last_ask_wall * 0.3:
-                            fake_wall_detected = True
-                            send_message("⚠️ Виявлена фейкова Sell стіна. Активовано SKIP.")
+                            fake_wall_detected = True  # 📌 тихий прапор, без спаму
+
 
                         # 🔁 Оновлення для наступної перевірки
                         last_bid_wall = current_buy_wall
