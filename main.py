@@ -1062,7 +1062,7 @@ def get_gspread_client():
     except Exception as e:
         send_message(f"❌ GSpread auth error: {e}")
         return None
-       # 🛡️ Безпечне закриття відкритої позиції через MARKET
+     # 🛡️ Безпечне закриття відкритої позиції через MARKET
 async def safe_close_position(side: str):
     """
     Закриття відкритої позиції через MARKET.
@@ -1072,7 +1072,6 @@ async def safe_close_position(side: str):
         qty_to_close: float = get_current_position_qty(side)
         if qty_to_close > 0:
             try:
-                # Спочатку пробуємо через reduceOnly
                 binance_client.futures_create_order(
                     symbol=CONFIG["SYMBOL"],
                     side='SELL' if side == "LONG" else 'BUY',
@@ -1086,7 +1085,6 @@ async def safe_close_position(side: str):
             except Exception as e:
                 error_text = str(e)
                 send_message(f"⚠️ Не вдалося закрити {side} через reduceOnly: {error_text}")
-
                 if "reduceonly" in error_text.lower():
                     send_message(f"⛔ Пробую закрити {side} через чистий MARKET без reduceOnly...")
                     try:
@@ -1103,56 +1101,13 @@ async def safe_close_position(side: str):
                         send_message(f"❌ Повторна помилка закриття {side}: {e_inner}")
     except Exception as e:
         send_message(f"❌ Safe close error ({side}): {e}")
- 
-# 🧠 Професійна обробка сигналу: переворот тільки при SUPER_BOOSTED, закриття лише якщо потрібно
+
+# 🧠 Обробка сигналу: переворот лише при SUPER_BOOSTED
 async def handle_signal(signal: str):
     """
-    Обробка торгового сигналу з урахуванням перевороту лише при SUPER_BOOSTED сигналі.
-    Перевірка наявності позиції перед закриттям або відкриттям.
+    Приймає рішення про відкриття/переворот на основі сигналу.
+    Переворот лише при SUPER_BOOSTED.
     """
-    # 🛡️ Безпечне закриття відкритої позиції через MARKET
-async def safe_close_position(side: str):
-    """
-    Закриття відкритої позиції через MARKET.
-    Якщо помилка через reduceOnly — повторна спроба без reduceOnly.
-    """
-    try:
-        qty_to_close: float = get_current_position_qty(side)
-        if qty_to_close > 0:
-            try:
-                # Спочатку пробуємо через reduceOnly
-                binance_client.futures_create_order(
-                    symbol=CONFIG["SYMBOL"],
-                    side='SELL' if side == "LONG" else 'BUY',
-                    type='MARKET',
-                    quantity=qty_to_close,
-                    reduceOnly=True,
-                    positionSide=side
-                )
-                send_message(f"🔻 Закрито {side} через reduceOnly: {qty_to_close}")
-                await asyncio.sleep(1)
-            except Exception as e:
-                error_text = str(e)
-                send_message(f"⚠️ Не вдалося закрити {side} через reduceOnly: {error_text}")
-
-                # Якщо проблема через reduceOnly (позиція вже закрита), пробуємо чистим MARKET
-                if "reduceonly" in error_text.lower():
-                    send_message(f"⛔ Пробую закрити {side} через чистий MARKET без reduceOnly...")
-                    try:
-                        binance_client.futures_create_order(
-                            symbol=CONFIG["SYMBOL"],
-                            side='SELL' if side == "LONG" else 'BUY',
-                            type='MARKET',
-                            quantity=qty_to_close,
-                            positionSide=side
-                        )
-                        send_message(f"✅ Успішно закрито {side} через чистий MARKET!")
-                        await asyncio.sleep(1)
-                    except Exception as e_inner:
-                        send_message(f"❌ Повторна помилка закриття {side}: {e_inner}")
-    except Exception as e:
-        send_message(f"❌ Safe close error ({side}): {e}")
-
     try:
         side_now: str = None
         if has_open_position("LONG"):
@@ -1160,14 +1115,22 @@ async def safe_close_position(side: str):
         elif has_open_position("SHORT"):
             side_now = "SHORT"
 
-        # Визначаємо напрямок нового сигналу
+        # Визначаємо напрямок і тип сигналу
         signal_direction: str = None
-        if "LONG" in signal:
+        super_boosted: bool = False
+
+        if signal.startswith("SUPER_BOOSTED_LONG"):
             signal_direction = "LONG"
-        elif "SHORT" in signal:
+            super_boosted = True
+        elif signal.startswith("SUPER_BOOSTED_SHORT"):
+            signal_direction = "SHORT"
+            super_boosted = True
+        elif signal.startswith("BOOSTED_LONG") or signal.startswith("LONG"):
+            signal_direction = "LONG"
+        elif signal.startswith("BOOSTED_SHORT") or signal.startswith("SHORT"):
             signal_direction = "SHORT"
 
-        # Якщо немає відкритої позиції — відкриваємо сигнал
+        # Якщо позиція ще не відкрита — відкриваємо
         if side_now is None:
             if signal_direction == "LONG":
                 await place_long(CONFIG["SYMBOL"], CONFIG["TRADE_AMOUNT_USD"])
@@ -1177,12 +1140,11 @@ async def safe_close_position(side: str):
                 update_cooldown()
             return
 
-        # Якщо є позиція і сигнал супер сильний + протилежний — переворот
-        if side_now != signal_direction and signal.startswith("SUPER_BOOSTED"):
+        # Якщо напрямок змінився і це SUPER BOOSTED → переворот
+        if side_now != signal_direction and super_boosted:
             send_message(f"🔄 Супер сигнал! Переворот {side_now} → {signal_direction}")
             await close_all_positions_and_orders()
-            await asyncio.sleep(0.5)  # Невелика пауза для стабільності
-
+            await asyncio.sleep(0.5)
             if signal_direction == "LONG":
                 await place_long(CONFIG["SYMBOL"], CONFIG["TRADE_AMOUNT_USD"])
                 update_cooldown()
@@ -1190,24 +1152,22 @@ async def safe_close_position(side: str):
                 await place_short(CONFIG["SYMBOL"], CONFIG["TRADE_AMOUNT_USD"])
                 update_cooldown()
         else:
-            # Якщо сигнал слабкий або той самий напрямок — тримаємо позицію
-            send_message(f"⚡ Тримання існуючої позиції ({side_now}). Сигнал: {signal}")
+            send_message(f"⚡ Тримаємо позицію ({side_now}), сигнал: {signal}")
 
     except Exception as e:
         send_message(f"❌ Handle signal error: {e}")
 
-
-# 🧹 Професійне закриття всіх позицій і відкритих ордерів через MARKET
+# 🧹 Повне закриття всіх позицій і відкритих ордерів
 async def close_all_positions_and_orders():
     """
-    Закриває відкриті позиції по ринку і скасовує всі відкриті стопи та тейк-профіти.
-    Спочатку закриття позиції, потім очищення ордерів.
+    Закриває всі відкриті позиції (LONG/SHORT) через MARKET,
+    а також скасовує всі відкриті стопи і тейки.
     """
     try:
         qty_long: float = get_current_position_qty("LONG")
         qty_short: float = get_current_position_qty("SHORT")
 
-        # Якщо є відкрита LONG позиція — закриваємо через MARKET
+        # Закриваємо LONG
         if qty_long > 0:
             try:
                 binance_client.futures_create_order(
@@ -1223,7 +1183,7 @@ async def close_all_positions_and_orders():
             except Exception as e:
                 send_message(f"❌ Помилка закриття LONG: {e}")
 
-        # Якщо є відкрита SHORT позиція — закриваємо через MARKET
+        # Закриваємо SHORT
         if qty_short > 0:
             try:
                 binance_client.futures_create_order(
@@ -1238,6 +1198,22 @@ async def close_all_positions_and_orders():
                 await asyncio.sleep(0.5)
             except Exception as e:
                 send_message(f"❌ Помилка закриття SHORT: {e}")
+
+        # Видаляємо стопи та тейки
+        try:
+            open_orders: list = binance_client.futures_get_open_orders(symbol=CONFIG["SYMBOL"])
+            for order in open_orders:
+                binance_client.futures_cancel_order(
+                    symbol=CONFIG["SYMBOL"],
+                    orderId=order["orderId"]
+                )
+            send_message("🧹 Видалено всі відкриті стопи та тейки.")
+        except Exception as e:
+            send_message(f"❌ Помилка скасування ордерів: {e}")
+
+    except Exception as e:
+        send_message(f"❌ Close all positions error: {e}")
+
 
         # Після закриття всіх позицій — прибираємо всі відкриті ордери
         try:
