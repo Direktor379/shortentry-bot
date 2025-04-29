@@ -26,7 +26,7 @@ async def healthcheck():
 # 🛠️ CONFIG — централізовані налаштування
 CONFIG = {
     "COOLDOWN_SECONDS": 90,
-    "TRADE_AMOUNT_USD": float(os.getenv("TRADE_USD_AMOUNT", 1000)),
+    "TRADE_AMOUNT_USD": float(os.getenv("TRADE_USD_AMOUNT", 300)),
     "SYMBOL": os.getenv("TRADE_SYMBOL", "BTCUSDT"),
 
     # Кластери
