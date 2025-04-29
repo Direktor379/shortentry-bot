@@ -1306,8 +1306,13 @@ async def monitor_closures():
                     # 🧠 Логування помилки у GPT памʼять при LOSS
                     if result == "LOSS":
                         reason = explain_trade_outcome(side, result, pnl)
+                        update_stats_sheet()
                         log_learning_entry(side, result, reason, pnl)
                         send_message(f"🧠 GPT пояснення збитку:\n{reason}")
+                    
+                    else:
+                        update_stats_sheet()
+
 
                     # 🧹 Обмеження розміру закритих позицій
                     if len(closed_positions_handled) > 100:
