@@ -1325,18 +1325,7 @@ async def close_all_positions_and_orders():
             except Exception as e:
                 send_message(f"❌ Помилка закриття SHORT: {e}")
 
-        # Видаляємо стопи та тейки
-        try:
-            open_orders: list = binance_client.futures_get_open_orders(symbol=CONFIG["SYMBOL"])
-            for order in open_orders:
-                binance_client.futures_cancel_order(
-                    symbol=CONFIG["SYMBOL"],
-                    orderId=order["orderId"]
-                )
-            send_message("🧹 Видалено всі відкриті стопи та тейки.")
-        except Exception as e:
-            send_message(f"❌ Помилка скасування ордерів: {e}")
-
+    
     except Exception as e:
         send_message(f"❌ Close all positions error: {e}")
 
