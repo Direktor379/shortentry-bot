@@ -668,7 +668,7 @@ def has_open_position(side):
 
 # 📡 Основний моніторинг кластерних сигналів
 async def monitor_cluster_trades():
-    global cluster_last_reset, cluster_is_processing, last_ws_error_time, last_skip_message_time
+    global cluster_last_reset, cluster_is_processing, last_ws_error_time, last_skip_message_time, avg_bid_volume, avg_ask_volume
 
     uri_list = [
         "wss://fstream.binance.com/ws/btcusdt@aggTrade",
@@ -727,13 +727,13 @@ async def monitor_cluster_trades():
                         total_buy = strongest_bucket[1]["buy"]
                         total_sell = strongest_bucket[1]["sell"]
 
-                        # 🧠 Вставка логіки наявності справжніх стін
-                        if has_real_bid_wall and total_buy > 50000:
+                        signal = None
+
+                        # 🧠 Динамічне рішення: якщо є реальна стіна і кластер значно більший за середнє
+                        if has_real_bid_wall and avg_bid_volume > 0 and total_buy > avg_bid_volume * 20:
                             signal = "BOOSTED_LONG"
-                        elif has_real_ask_wall and total_sell > 50000:
+                        elif has_real_ask_wall and avg_ask_volume > 0 and total_sell > avg_ask_volume * 20:
                             signal = "BOOSTED_SHORT"
-                        else:
-                            signal = None
 
                         gpt_candle_result = await analyze_candle_gpt(
                             vwap=cached_vwap,
@@ -875,6 +875,7 @@ async def monitor_cluster_trades():
             else:
                 send_message(f"⚠️ WebSocket помилка: {e}. Перемикаємо сервер. Перепідключення через {reconnect_delay} сек...")
                 await asyncio.sleep(reconnect_delay)
+
 
 
 # 🧰 Скасування існуючого стоп-ордеру для сторони
