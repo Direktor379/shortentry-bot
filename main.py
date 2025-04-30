@@ -796,12 +796,12 @@ async def monitor_cluster_trades():
                                     last_impulse = {"side": "SELL", "volume": total_sell, "timestamp": now}
 
                                 if total_buy < 60 and total_sell < 60:
-                                    send_message("⚪ Кластер має малий обʼєм — пропущено.")
                                     cluster_data.clear()
                                     cluster_last_reset = time.time()
                                     cluster_is_processing = False
                                     await asyncio.sleep(1)
                                     continue
+
 
                                 if fake_wall_detected:
                                     send_message("🚫 Сигнал пропущено через фейкову стіну.")
