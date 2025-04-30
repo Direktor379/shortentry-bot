@@ -26,12 +26,9 @@ async def healthcheck():
     
 # 🛠️ CONFIG — централізовані налаштування
 CONFIG = {
-...
-"TP_SL": {
-    "LONG": {"TP": 1.002, "SL": 0.999},
-    "SHORT": {"TP": 0.998, "SL": 1.001}
-},
-#
+    "COOLDOWN_SECONDS": 90,
+    "TRADE_AMOUNT_USD": float(os.getenv("TRADE_USD_AMOUNT", 300)),
+    "SYMBOL": os.getenv("TRADE_SYMBOL", "BTCUSDT"),
 
     # Кластери
     "CLUSTER_BUCKET_SIZE": 10,
