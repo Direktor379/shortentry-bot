@@ -115,11 +115,6 @@ def init_runtime_state():
     current_buy_wall = 0.0
     current_sell_wall = 0.0
 
-    # 📊 Прапори наявності справжніх стін
-    has_real_bid_wall: bool = False
-    has_real_ask_wall: bool = False
-
-
 
 
 # 📬 Відправка повідомлення у Telegram
@@ -668,10 +663,7 @@ def has_open_position(side):
 
 # 📡 Основний моніторинг кластерних сигналів
 async def monitor_cluster_trades():
-    global has_real_bid_wall, has_real_ask_wall, avg_bid_volume, avg_ask_volume
     global cluster_last_reset, cluster_is_processing, last_ws_error_time, last_skip_message_time
-    global fake_wall_detected
-
 
     uri_list = [
         "wss://fstream.binance.com/ws/btcusdt@aggTrade",
@@ -730,14 +722,6 @@ async def monitor_cluster_trades():
                         total_buy = strongest_bucket[1]["buy"]
                         total_sell = strongest_bucket[1]["sell"]
 
-                        signal = None
-
-                        # 🧠 Динамічне рішення: якщо є реальна стіна і кластер значно більший за середнє
-                        if has_real_bid_wall and avg_bid_volume > 0 and total_buy > avg_bid_volume * 20:
-                            signal = "BOOSTED_LONG"
-                        elif has_real_ask_wall and avg_ask_volume > 0 and total_sell > avg_ask_volume * 20:
-                            signal = "BOOSTED_SHORT"
-
                         gpt_candle_result = await analyze_candle_gpt(
                             vwap=cached_vwap,
                             cluster_buy=total_buy,
@@ -761,15 +745,15 @@ async def monitor_cluster_trades():
                         buy_ratio = (buy_volume / (buy_volume + sell_volume)) * 100 if (buy_volume + sell_volume) > 0 else 0
                         sell_ratio = 100 - buy_ratio
 
-                        if signal is None:
-                            if buy_ratio >= CONFIG["SUPER_BOOST_RATIO"] and total_buy >= CONFIG["SUPER_BOOST_VOLUME"]:
-                                signal = "SUPER_BOOSTED_LONG"
-                            elif sell_ratio >= CONFIG["SUPER_BOOST_RATIO"] and total_sell >= CONFIG["SUPER_BOOST_VOLUME"]:
-                                signal = "SUPER_BOOSTED_SHORT"
-                            elif total_buy >= CONFIG["BOOST_THRESHOLD"]:
-                                signal = "BOOSTED_LONG"
-                            elif total_sell >= CONFIG["BOOST_THRESHOLD"]:
-                                signal = "BOOSTED_SHORT"
+                        signal = None
+                        if buy_ratio >= CONFIG["SUPER_BOOST_RATIO"] and total_buy >= CONFIG["SUPER_BOOST_VOLUME"]:
+                            signal = "SUPER_BOOSTED_LONG"
+                        elif sell_ratio >= CONFIG["SUPER_BOOST_RATIO"] and total_sell >= CONFIG["SUPER_BOOST_VOLUME"]:
+                            signal = "SUPER_BOOSTED_SHORT"
+                        elif total_buy >= CONFIG["BOOST_THRESHOLD"]:
+                            signal = "BOOSTED_LONG"
+                        elif total_sell >= CONFIG["BOOST_THRESHOLD"]:
+                            signal = "BOOSTED_SHORT"
 
                         if signal is None and (total_buy > CONFIG["MIN_CLUSTER_ALERT"] or total_sell > CONFIG["MIN_CLUSTER_ALERT"]):
                             send_message(f"📊 Кластер {strongest_bucket[0]} → Buy: {round(total_buy)}, Sell: {round(total_sell)} | Не BOOSTED")
@@ -795,38 +779,38 @@ async def monitor_cluster_trades():
                                 elif signal in ["BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
                                     last_impulse = {"side": "SELL", "volume": total_sell, "timestamp": now}
 
-                                min_dynamic_volume = avg_bid_volume * 5 if avg_bid_volume else 50
-
-                                if total_buy < min_dynamic_volume and total_sell < min_dynamic_volume:
+                                # 🔥 Фільтрація кластерів по обʼєму
+                                if total_buy < 60 and total_sell < 60:
+                                    send_message("⚪ Кластер має малий обʼєм — пропущено.")
                                     cluster_data.clear()
                                     cluster_last_reset = time.time()
                                     cluster_is_processing = False
                                     await asyncio.sleep(1)
                                     continue
+                                    # 🚫 Якщо виявлено фейкову стіну — SKIP
+                                    if fake_wall_detected:
+                                        send_message("🚫 Сигнал пропущено через фейкову стіну.")
+                                        cluster_data.clear()
+                                        cluster_last_reset = time.time()
+                                        cluster_is_processing = False
+                                        fake_wall_detected = False  # скидаємо прапор
+                                        await asyncio.sleep(1)
+                                        continue
 
 
-
-                                if fake_wall_detected:
-                                    send_message("🚫 Сигнал пропущено через фейкову стіну.")
-                                    cluster_data.clear()
-                                    cluster_last_reset = time.time()
-                                    cluster_is_processing = False
-                                    fake_wall_detected = False
-                                    await asyncio.sleep(1)
-                                    continue
 
                                 news = get_latest_news()
                                 oi = cached_oi
                                 volume = cached_volume
                                 candles = get_candle_summary("BTCUSDT")
                                 walls = get_orderbook_snapshot("BTCUSDT")
-
+                                # 📈 Перевірка, чи є реальний рух після кластера
                                 try:
                                     entry_price: float = float(binance_client.futures_mark_price(symbol="BTCUSDT")["markPrice"])
-                                    await asyncio.sleep(5)
+                                    await asyncio.sleep(5)  # даємо ринку 5 сек
                                     exit_price: float = float(binance_client.futures_mark_price(symbol="BTCUSDT")["markPrice"])
                                     price_change: float = (exit_price - entry_price) / entry_price * 100
-
+                                
                                     if signal.startswith("LONG") and price_change < 0.05:
                                         send_message("⚪ LONG кластер без продовження руху — SKIP.")
                                         cluster_data.clear()
@@ -834,7 +818,7 @@ async def monitor_cluster_trades():
                                         cluster_is_processing = False
                                         await asyncio.sleep(1)
                                         continue
-
+                                
                                     if signal.startswith("SHORT") and price_change > -0.05:
                                         send_message("⚪ SHORT кластер без продовження руху — SKIP.")
                                         cluster_data.clear()
@@ -842,7 +826,7 @@ async def monitor_cluster_trades():
                                         cluster_is_processing = False
                                         await asyncio.sleep(1)
                                         continue
-
+                                
                                 except Exception as e:
                                     send_message(f"❌ Помилка при перевірці руху після кластера: {e}")
 
@@ -1033,9 +1017,7 @@ async def monitor_orderbook(symbol: str = "BTCUSDT"):
     Підключення до WebSocket потоку depth20@100ms для моніторингу заявок на покупку та продаж.
     Зберігає інформацію про великі buy/sell стіни для подальшого використання в GPT аналізі.
     """
-    global current_buy_wall, current_sell_wall, last_bid_wall, last_ask_wall
-    global fake_wall_detected, fake_wall_counter, last_fake_wall_time
-    global has_real_bid_wall, has_real_ask_wall, avg_bid_volume, avg_ask_volume
+    global current_buy_wall, current_sell_wall, last_bid_wall, last_ask_wall, fake_wall_detected, fake_wall_counter, last_fake_wall_time
     current_buy_wall = None  # тип: Optional[float]
     current_sell_wall = None  # тип: Optional[float]
 
@@ -1062,15 +1044,6 @@ async def monitor_orderbook(symbol: str = "BTCUSDT"):
                         # Оновлюємо глобальні змінні
                         current_buy_wall = max_bid_qty
                         current_sell_wall = max_ask_qty
-
-                        # 📊 Обчислюємо середній обʼєм серед заявок у стакані
-                        avg_bid_volume = sum([float(qty) for _, qty in bids]) / len(bids) if bids else 0
-                        avg_ask_volume = sum([float(qty) for _, qty in asks]) / len(asks) if asks else 0
-                        
-                        # 🧱 Визначаємо, чи є справжня велика заявка у стакані
-                        has_real_bid_wall = max_bid_qty >= avg_bid_volume * 2.5 if avg_bid_volume > 0 else False
-                        has_real_ask_wall = max_ask_qty >= avg_ask_volume * 2.5 if avg_ask_volume > 0 else False
-
 
                        # 🔍 Перевірка на повторне зникнення стіни
                         if last_bid_wall > 0 and current_buy_wall < last_bid_wall * 0.3:
