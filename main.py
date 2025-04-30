@@ -23,11 +23,15 @@ app = FastAPI()
 @app.get("/")
 async def healthcheck():
     return {"status": "running"}
+    
 # 🛠️ CONFIG — централізовані налаштування
 CONFIG = {
-    "COOLDOWN_SECONDS": 90,
-    "TRADE_AMOUNT_USD": float(os.getenv("TRADE_USD_AMOUNT", 300)),
-    "SYMBOL": os.getenv("TRADE_SYMBOL", "BTCUSDT"),
+    ...
+    "TP_SL": {
+        "LONG": {"TP": 1.002, "SL": 0.999},
+        "SHORT": {"TP": 0.998, "SL": 1.001}
+    },
+
 
     # Кластери
     "CLUSTER_BUCKET_SIZE": 10,
