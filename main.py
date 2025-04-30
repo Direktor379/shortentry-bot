@@ -795,12 +795,15 @@ async def monitor_cluster_trades():
                                 elif signal in ["BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
                                     last_impulse = {"side": "SELL", "volume": total_sell, "timestamp": now}
 
-                                if total_buy < 60 and total_sell < 60:
+                                min_dynamic_volume = avg_bid_volume * 5 if avg_bid_volume else 50
+
+                                if total_buy < min_dynamic_volume and total_sell < min_dynamic_volume:
                                     cluster_data.clear()
                                     cluster_last_reset = time.time()
                                     cluster_is_processing = False
                                     await asyncio.sleep(1)
                                     continue
+
 
 
                                 if fake_wall_detected:
