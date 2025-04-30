@@ -31,7 +31,7 @@ async def healthcheck():
         "LONG": {"TP": 1.002, "SL": 0.999},
         "SHORT": {"TP": 0.998, "SL": 1.001}
     },
-
+#
 
     # Кластери
     "CLUSTER_BUCKET_SIZE": 10,
