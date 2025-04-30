@@ -668,7 +668,9 @@ def has_open_position(side):
 
 # 📡 Основний моніторинг кластерних сигналів
 async def monitor_cluster_trades():
-    global cluster_last_reset, cluster_is_processing, last_ws_error_time, last_skip_message_time, avg_bid_volume, avg_ask_volume
+    global cluster_last_reset, cluster_is_processing, last_ws_error_time, last_skip_message_time
+    global has_real_bid_wall, has_real_ask_wall
+
 
     uri_list = [
         "wss://fstream.binance.com/ws/btcusdt@aggTrade",
