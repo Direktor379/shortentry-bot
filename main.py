@@ -670,7 +670,7 @@ def has_open_position(side):
 async def monitor_cluster_trades():
     global has_real_bid_wall, has_real_ask_wall, avg_bid_volume, avg_ask_volume
     global cluster_last_reset, cluster_is_processing, last_ws_error_time, last_skip_message_time
-    global has_real_bid_wall, has_real_ask_wall
+    global fake_wall_detected
 
 
     uri_list = [
