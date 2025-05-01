@@ -36,7 +36,8 @@ WATCHLIST = [
 ]
 
 SPREAD_THRESHOLD = 0.3  # %
-open_positions = {{}}
+open_positions = {}
+
 
 async def fetch_price(session, url):
     try:
