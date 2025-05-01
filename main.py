@@ -64,6 +64,10 @@ BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
 GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
 
+# 💰 Стратегія серій — змінна ставка
+current_stake_usd: float = current_stake_usd
+win_streak: int = 0
+
 # 🔌 Ініціалізація клієнтів
 binance_client = Client(api_key=BINANCE_API_KEY, api_secret=BINANCE_SECRET_KEY)
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -875,11 +879,11 @@ async def monitor_cluster_trades():
 
                                 if decision in ["LONG", "BOOSTED_LONG", "SUPER_BOOSTED_LONG"]:
                                     if not has_open_position("LONG") and is_cooldown_ready():
-                                        await place_long("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+                                        await place_long("BTCUSDT", current_stake_usd)
                                         update_cooldown()
                                 elif decision in ["SHORT", "BOOSTED_SHORT", "SUPER_BOOSTED_SHORT"]:
                                     if not has_open_position("SHORT") and is_cooldown_ready():
-                                        await place_short("BTCUSDT", CONFIG["TRADE_AMOUNT_USD"])
+                                        await place_short("BTCUSDT", current_stake_usd)
                                         update_cooldown()
 
                         cluster_data.clear()
@@ -1229,10 +1233,10 @@ async def handle_signal(signal: str):
         # Якщо позиція ще не відкрита — відкриваємо
         if side_now is None:
             if signal_direction == "LONG":
-                await place_long(CONFIG["SYMBOL"], CONFIG["TRADE_AMOUNT_USD"])
+                await place_long(CONFIG["SYMBOL"], current_stake_usd)
                 update_cooldown()
             elif signal_direction == "SHORT":
-                await place_short(CONFIG["SYMBOL"], CONFIG["TRADE_AMOUNT_USD"])
+                await place_short(CONFIG["SYMBOL"], current_stake_usd)
                 update_cooldown()
             return
 
@@ -1242,10 +1246,10 @@ async def handle_signal(signal: str):
             await close_all_positions_and_orders()
             await asyncio.sleep(0.5)
             if signal_direction == "LONG":
-                await place_long(CONFIG["SYMBOL"], CONFIG["TRADE_AMOUNT_USD"])
+                await place_long(CONFIG["SYMBOL"], current_stake_usd)
                 update_cooldown()
             elif signal_direction == "SHORT":
-                await place_short(CONFIG["SYMBOL"], CONFIG["TRADE_AMOUNT_USD"])
+                await place_short(CONFIG["SYMBOL"], current_stake_usd)
                 update_cooldown()
         else:
             send_message(f"⚡ Тримаємо позицію ({side_now}), сигнал: {signal}")
@@ -1354,6 +1358,24 @@ async def monitor_closures():
                     
                     else:
                         update_stats_sheet()
+
+
+                    
+                    global current_stake_usd, win_streak
+
+                    if result == "WIN":
+                        win_streak += 1
+                        if win_streak >= 5:
+                            send_message(f"🏁 Досягнуто 5 перемог! Скидаємо ставку.")
+                            current_stake_usd = CONFIG["TRADE_AMOUNT_USD"]
+                            win_streak = 0
+                        else:
+                            current_stake_usd *= 2
+                            send_message(f"✅ WIN. Ставка тепер {current_stake_usd}$ (стрик {win_streak})")
+                    else:
+                        current_stake_usd = CONFIG["TRADE_AMOUNT_USD"]
+                        win_streak = 0
+                        send_message(f"❌ LOSS. Скидаємо ставку на {current_stake_usd}$")
 
 
                     # 🧹 Обмеження розміру закритих позицій
