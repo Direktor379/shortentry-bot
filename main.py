@@ -1202,6 +1202,9 @@ async def handle_signal(signal: str):
     Переворот лише при SUPER_BOOSTED.
     """
     try:
+        trend: str = get_ema_trend(CONFIG["SYMBOL"])
+        send_message(f"📊 Тренд: {trend} | Сигнал: {signal} | Позиція: {side_now or 'немає'}")
+
         side_now: str = None
         if has_open_position("LONG"):
             side_now = "LONG"
