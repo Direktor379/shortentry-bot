@@ -1207,6 +1207,11 @@ async def handle_signal(signal: str):
             side_now = "LONG"
         elif has_open_position("SHORT"):
             side_now = "SHORT"
+        # 🧠 Логіка супроводу: якщо вже є позиція — ігноруємо сигнал
+        if side_now:
+            send_message(f"🔁 Позиція {side_now} вже відкрита — сигнал {signal} ігноруємо.")
+            return
+
 
         # Визначаємо напрямок і тип сигналу
         signal_direction: str = None
