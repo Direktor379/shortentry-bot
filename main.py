@@ -1420,7 +1420,7 @@ async def start_all_monitors():
 
         asyncio.create_task(monitor_market_cache())        # 📡 Кешування OI/Volume/VWAP
         asyncio.create_task(monitor_cluster_trades())      # 🧠 Кластерний моніторинг та GPT-аналіз
-                asyncio.create_task(monitor_closures())            # 📈 Моніторинг закриття угод і логування
+        asyncio.create_task(monitor_closures())            # 📈 Моніторинг закриття угод і логування
         asyncio.create_task(monitor_orderbook(CONFIG["SYMBOL"]))
         asyncio.create_task(monitor_delta_volume(CONFIG["SYMBOL"]))
         asyncio.create_task(periodic_stats_update())  # 🕒 Автооновлення статистики кожні 5 хв
