@@ -1107,6 +1107,11 @@ async def monitor_orderbook(symbol: str = "BTCUSDT"):
 
 # 📈 Відкриття LONG угоди (з перевіркою і безпечною взаємодією)
 async def place_long(symbol: str, usd: float):
+    # Перевірка тренду перед відкриттям LONG
+    trend: str = get_ema_trend(symbol)
+    if trend != "LONG":
+        send_message(f"⛔️ Відмова: тренд {trend}, не відкриваємо LONG")
+        return
     """
     Відкриття LONG-позиції. Попередньо закриває SHORT-позицію безпечним методом safe_close_position().
     """
@@ -1188,6 +1193,11 @@ async def place_long(symbol: str, usd: float):
 
 # 📉 Відкриття SHORT угоди (з перевіркою і безпечною взаємодією)
 async def place_short(symbol: str, usd: float):
+    # Перевірка тренду перед відкриттям SHORT
+    trend: str = get_ema_trend(symbol)
+    if trend != "SHORT":
+        send_message(f"⛔️ Відмова: тренд {trend}, не відкриваємо SHORT")
+        return
     """
     Відкриття SHORT-позиції. Попередньо закриває LONG-позицію безпечним методом safe_close_position().
     """
