@@ -1555,6 +1555,7 @@ async def start_all_monitors():
         asyncio.create_task(monitor_closures())            # 📈 Моніторинг закриття угод і логування
         asyncio.create_task(monitor_orderbook(CONFIG["SYMBOL"]))
         asyncio.create_task(monitor_delta_volume(CONFIG["SYMBOL"]))
+        asyncio.create_task(periodic_stats_update())  # 🕒 Автооновлення статистики кожні 5 хв
 
 
 
@@ -1679,3 +1680,26 @@ async def webhook(req: Request):
     except Exception as e:
         send_message(f"❌ Webhook error: {e}")
         return {"error": str(e)}
+
+@app.get("/update-stats")
+async def manual_update_stats():
+    """
+    Ручний виклик для оновлення статистики у вкладці 'Stats' Google Sheets.
+    """
+    try:
+        update_stats_sheet()
+        return {"status": "✅ Stats оновлено вручну"}
+    except Exception as e:
+        return {"error": f"❌ Помилка при оновленні: {e}"}
+
+async def periodic_stats_update():
+    """
+    Оновлює вкладку 'Stats' у Google Sheets кожні 5 хвилин (300 секунд).
+    """
+    while True:
+        try:
+            update_stats_sheet()
+            print("✅ Stats оновлено автоматично.")
+        except Exception as e:
+            send_message(f"❌ Cron Stats update error: {e}")
+        await asyncio.sleep(300)
