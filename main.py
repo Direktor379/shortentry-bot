@@ -65,7 +65,7 @@ GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
 
 # 💰 Стратегія серій — змінна ставка
-current_stake_usd: float = current_stake_usd
+current_stake_usd: float = CONFIG["TRADE_AMOUNT_USD"]
 win_streak: int = 0
 
 # 🔌 Ініціалізація клієнтів
