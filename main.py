@@ -285,6 +285,7 @@ def get_global_stats() -> dict:
 # 🧠 Запит до GPT на базі повного контексту
 async def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
     try:
+        trend = get_ema_trend(CONFIG["SYMBOL"])
         recent_trades, win_streak = get_recent_trades_and_streak()
         stats_summary = get_stats_summary()
         mistakes = get_recent_mistakes()
@@ -318,6 +319,9 @@ async def ask_gpt_trade_with_all_context(type_, news, oi, delta, volume):
         delta_text = f"{delta:.2f}%" if delta is not None else "невідомо"
 
         prompt = f"""
+📊 Поточний тренд (EMA 5m): {trend}
+Не відкривай позицію, якщо вона суперечить тренду.
+
 GPT минулі сигнали:
 {recent_trades}
 
