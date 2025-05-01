@@ -597,6 +597,36 @@ BOOSTED — потужний імпульс, сильний рух
             "reason": f"GPT error: {e}"
         }
 
+# 📈 Розрахунок EMA за списком закриттів
+def calculate_ema(data: list[float], period: int = 20) -> float:
+    """
+    Розраховує EMA (Exponential Moving Average) для переданого списку закриттів.
+    """
+    ema: float = data[0]
+    k: float = 2 / (period + 1)
+    for price in data[1:]:
+        ema = price * k + ema * (1 - k)
+    return ema
+    # 🧭 Визначення тренду за EMA (5m, 20 періодів)
+def get_ema_trend(symbol: str = "BTCUSDT", period: int = 20) -> str:
+    try:
+        klines = binance_client.futures_klines(symbol=symbol, interval="5m", limit=100)
+        closes = [float(k[4]) for k in klines]
+        ema = calculate_ema(closes[-period:])
+        current_price = closes[-1]
+
+        if current_price > ema:
+            return "LONG"
+        elif current_price < ema:
+            return "SHORT"
+        else:
+            return "NONE"
+    except Exception as e:
+        send_message(f"❌ EMA trend error: {e}")
+        return "NONE"
+
+
+
 # 🧱 Отримання snapshot order book (стіни покупців і продавців)
 def get_orderbook_snapshot(symbol="BTCUSDT", depth=50):
     try:
@@ -1315,6 +1345,13 @@ async def handle_signal(signal: str):
             signal_direction = "LONG"
         elif signal.startswith("BOOSTED_SHORT") or signal.startswith("SHORT"):
             signal_direction = "SHORT"
+
+        trend = get_ema_trend(CONFIG["SYMBOL"])
+
+        if signal_direction != trend:
+            send_message(f"⛔️ Пропуск: сигнал {signal_direction}, але EMA-тренд {trend}")
+            return
+
 
         # Якщо позиція ще не відкрита — відкриваємо
         if side_now is None:
