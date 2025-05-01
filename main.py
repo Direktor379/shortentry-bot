@@ -1202,19 +1202,11 @@ async def handle_signal(signal: str):
     Переворот лише при SUPER_BOOSTED.
     """
     try:
-        trend: str = get_ema_trend(CONFIG["SYMBOL"])
-        send_message(f"📊 Тренд: {trend} | Сигнал: {signal} | Позиція: {side_now or 'немає'}")
-
         side_now: str = None
         if has_open_position("LONG"):
             side_now = "LONG"
         elif has_open_position("SHORT"):
             side_now = "SHORT"
-        # 🧠 Логіка супроводу: якщо вже є позиція — ігноруємо сигнал
-        if side_now:
-            send_message(f"🔁 Позиція {side_now} вже відкрита — сигнал {signal} ігноруємо.")
-            return
-
 
         # Визначаємо напрямок і тип сигналу
         signal_direction: str = None
